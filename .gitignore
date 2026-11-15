@@ -1,0 +1,18 @@
+node_modules/
+.npmrc
+dist/
+*.tsbuildinfo
+.env
+.env.local
+coverage/
+
+__pycache__/
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# local Claude Code state
+.claude/
+build/
+*.pyc
