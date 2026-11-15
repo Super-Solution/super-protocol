@@ -1,0 +1,70 @@
+name: Publish npm package
+
+# Manual release of @supersolutions/super-protocol with npm Trusted Publishing (OIDC): no npm
+# token, no repository secret. The package's trusted publisher must name this repository and this
+# file (npm-publish.yml). Go and Python are not published by this workflow.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact version already committed in implementations/typescript/package.json (X.Y.Z or X.Y.Z-next.N)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'Super-Solution/super-protocol' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.12.0'
+          package-manager-cache: false
+      - name: Require npm 11.5.1 or newer (Trusted Publishing)
+        run: |
+          node -e "const [a,b,c]=process.argv[1].split('.').map(Number); if (a<11||(a===11&&(b<5||(b===5&&c<1)))) { console.error('npm '+process.argv[1]+' is too old for Trusted Publishing'); process.exit(1) }" "$(npm --version)"
+      - name: Verify the requested version
+        run: |
+          node --input-type=module -e "
+            import fs from 'node:fs'
+            const v = process.env.RELEASE_VERSION
+            if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-next\.(0|[1-9]\d*))?$/.test(v)) throw new Error('Unsupported release version')
+            const p = JSON.parse(fs.readFileSync('implementations/typescript/package.json', 'utf8'))
+            if (p.name !== '@supersolutions/super-protocol' || p.private === true) throw new Error('Unexpected package')
+            if (p.version !== v) throw new Error(p.name + ' is ' + p.version + ', not ' + v)"
+      - name: Install locked dependencies
+        run: |
+          npm install --global pnpm@9.12.0 --ignore-scripts --no-audit --no-fund
+          pnpm install --frozen-lockfile --ignore-scripts
+      - name: Build, typecheck and test
+        run: |
+          pnpm build
+          pnpm typecheck
+          pnpm test
+      - name: Conformance data is reproducible from the reference
+        run: |
+          pnpm conformance:export
+          git diff --exit-code -- conformance
+      - name: Pack
+        run: |
+          mkdir -p "$RUNNER_TEMP/npm-release"
+          pnpm --dir implementations/typescript pack --pack-destination "$RUNNER_TEMP/npm-release"
+      - name: Publish using OIDC (with provenance)
+        run: |
+          npm publish "$RUNNER_TEMP/npm-release/supersolutions-super-protocol-$RELEASE_VERSION.tgz" --registry=https://registry.npmjs.org/ --access=public --provenance --tag="$( [[ "$RELEASE_VERSION" == *-* ]] && echo next || echo latest )" --ignore-scripts
