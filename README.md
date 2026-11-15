@@ -4,11 +4,11 @@ The shared contract of the Super Solution libs, as one Apache-2.0 specification 
 implementations that are tested against the same data.
 
 ```
-conformance/   language-neutral test data (protocol.v1.json), generated from the TypeScript reference
-typescript/    @supersolutions/super-protocol, the reference implementation (types + validators + SSE parser)
-go/            Go port (standard library only)
-python/        Python port, package `super-protocol` (standard library only)
-scripts/       conformance generator and the local gate
+conformance/                 language-neutral test data (protocol.v1.json), generated from the TypeScript reference
+implementations/typescript/  @supersolutions/super-protocol, the reference (types + validators + SSE parser)
+implementations/go/          Go port (standard library only)
+implementations/python/      Python port, package `super-protocol` (standard library only)
+scripts/                   conformance generator and the local gate
 ```
 
 ## What it is for
@@ -31,7 +31,7 @@ data without sharing code.
 ## The rule
 
 This package never imports from a GPL/AGPL package and has no runtime dependencies. The TypeScript
-test `typescript/src/boundary.test.ts` fails if that changes.
+test `implementations/typescript/src/boundary.test.ts` fails if that changes.
 
 ## Conformance
 

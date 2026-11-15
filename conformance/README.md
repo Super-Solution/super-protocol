@@ -1,7 +1,7 @@
 # Conformance data
 
 Language-neutral test data for `@supersolutions/super-protocol`. The TypeScript package in
-[`../typescript`](../typescript) is the reference; every other implementation must reproduce these
+[`../implementations/typescript`](../implementations/typescript) is the reference; every other implementation must reproduce these
 cases exactly, error messages included.
 
 | File | What it pins |
@@ -15,8 +15,8 @@ lengths count UTF-16 code units, as JavaScript does.
 ```bash
 pnpm build && pnpm conformance:export       # regenerate (from the repo root)
 pnpm test                                    # TypeScript still matches
-(cd go && go test ./...)                     # Go port
-(cd python && pytest)                        # Python port
+(cd implementations/go && go test ./...)                     # Go port
+(cd implementations/python && pytest)                        # Python port
 ```
 
 If behaviour changes on purpose, regenerate, review the diff, and update every port. A closed-source

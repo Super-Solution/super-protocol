@@ -21,7 +21,7 @@ type Frame struct {
 	Data  string
 }
 
-// Parser is an incremental SSE parser, ported from `parseSSE` in typescript/src/router.ts. Feed raw bytes
+// Parser is an incremental SSE parser, ported from `parseSSE` in implementations/typescript/src/router.ts. Feed raw bytes
 // as they arrive; frames come back as soon as their blank line does. It copes with any chunk
 // boundary (including inside a multi-byte character) and with LF or CRLF line ends. The pending
 // text is limited to MaxFrameBytes UTF-16 code units, like the reference. Invalid UTF-8 is replaced

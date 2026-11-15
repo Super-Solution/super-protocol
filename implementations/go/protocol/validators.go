@@ -2,7 +2,7 @@
 
 // Package protocol ports the validators and the SSE parser of @supersolutions/super-protocol.
 //
-// Every message and the order of the checks match the TypeScript reference in typescript/;
+// Every message and the order of the checks match the TypeScript reference in implementations/typescript/;
 // conformance/protocol.v1.json pins that. Inputs are decoded JSON (see jsutil.go).
 package protocol
 

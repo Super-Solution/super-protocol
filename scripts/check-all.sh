@@ -19,13 +19,13 @@ if ! cmp -s conformance/protocol.v1.json /tmp/protocol.v1.json.before; then
 fi
 
 echo "== go"
-(cd go && go vet ./... && test -z "$(gofmt -l .)" && go test ./...)
+(cd implementations/go && go vet ./... && test -z "$(gofmt -l .)" && go test ./...)
 
 if [ "${SKIP_PYTHON:-0}" != "1" ]; then
   echo "== python"
   venv="$(mktemp -d)"
   python3 -m venv "$venv"
-  "$venv/bin/pip" install -q -e "python[dev]"
-  (cd python && "$venv/bin/pytest" -q && "$venv/bin/ruff" check . && "$venv/bin/mypy")
+  "$venv/bin/pip" install -q -e "implementations/python[dev]"
+  (cd implementations/python && "$venv/bin/pytest" -q && "$venv/bin/ruff" check . && "$venv/bin/mypy")
 fi
 echo "all checks passed"
