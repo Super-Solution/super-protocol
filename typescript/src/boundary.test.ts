@@ -1,0 +1,24 @@
+// The license boundary: this package is Apache-2.0 and is imported by Apache hosts (super-chat)
+// and by GPL/AGPL plugins alike. It must stay dependency-free and self-contained.
+import { readdirSync, readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+
+const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+const sources = readdirSync(new URL(".", import.meta.url)).filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"));
+
+describe("license boundary", () => {
+  it("is Apache-2.0", () => expect(pkg.license).toBe("Apache-2.0"));
+  it("has no runtime dependencies", () => {
+    expect(pkg.dependencies ?? {}).toEqual({});
+    expect(pkg.peerDependencies ?? {}).toEqual({});
+  });
+  it("imports nothing but its own files", () => {
+    expect(sources.length).toBeGreaterThan(0);
+    for (const f of sources) {
+      const text = readFileSync(new URL(f, import.meta.url), "utf8");
+      for (const m of text.matchAll(/(?:from|import)\s*\(?\s*["']([^"']+)["']/g)) {
+        expect(m[1], `${f} imports ${m[1]}`).toMatch(/^\.\//);
+      }
+    }
+  });
+});
