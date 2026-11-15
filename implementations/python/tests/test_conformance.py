@@ -15,7 +15,7 @@ from super_protocol import (
     validate_plugin_manifest,
 )
 
-DATA = json.loads((Path(__file__).resolve().parents[2] / "conformance" / "protocol.v1.json").read_text())
+DATA = json.loads((Path(__file__).resolve().parents[3] / "conformance" / "protocol.v1.json").read_text())
 
 
 def run_sse(case: dict[str, Any]) -> dict[str, Any]:

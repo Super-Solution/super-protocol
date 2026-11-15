@@ -44,7 +44,7 @@ type fixtures struct {
 
 func load(t testing.TB) fixtures {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join("..", "..", "conformance", "protocol.v1.json"))
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", "conformance", "protocol.v1.json"))
 	if err != nil {
 		t.Fatal(err)
 	}

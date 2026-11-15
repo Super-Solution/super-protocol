@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Incremental Server-Sent Events parser, ported from `parseSSE` in typescript/src/router.ts.
+"""Incremental Server-Sent Events parser, ported from `parseSSE` in implementations/typescript/src/router.ts.
 
 Feed raw bytes as they arrive; frames come back as soon as their blank line does. It copes with any
 chunk boundary (including inside a multi-byte character) and with LF or CRLF line ends. Pending

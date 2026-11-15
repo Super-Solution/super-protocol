@@ -2,10 +2,10 @@
 
 `protocol`: plugin manifest, editor card and chart card validators and an incremental SSE parser.
 The TypeScript package in [`../typescript`](../typescript) is the reference; this port reproduces every
-case in [`../conformance`](../conformance/README.md), messages included. Standard library only.
+case in [`../../conformance`](../../conformance/README.md), messages included. Standard library only.
 
 ```go
-import "github.com/Super-Solution/super-protocol/go/protocol"
+import "github.com/Super-Solution/super-protocol/implementations/go/protocol"
 ```
 
 ```bash

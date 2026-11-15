@@ -4,7 +4,7 @@
   "description": "Apache-2.0 shared protocol for the Super Solution libs: plugin manifest, chat plugin contract, inference gateway and editor card types. Types and validators only, no runtime dependencies.",
   "license": "Apache-2.0",
   "author": "SUPER SOLUTION LABS INC",
-  "homepage": "https://github.com/Super-Solution/super-protocol/tree/main/typescript#readme",
+  "homepage": "https://github.com/Super-Solution/super-protocol/tree/main/implementations/typescript#readme",
   "bugs": {
     "url": "https://github.com/Super-Solution/super-protocol/issues"
   },
@@ -60,7 +60,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/Super-Solution/super-protocol.git",
-    "directory": "typescript"
+    "directory": "implementations/typescript"
   },
   "publishConfig": {
     "access": "public"

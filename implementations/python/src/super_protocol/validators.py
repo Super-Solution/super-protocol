@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Plugin manifest, editor card and chart card validators.
 
-Ported from the TypeScript reference in typescript/; every message and every ordering of
+Ported from the TypeScript reference in implementations/typescript/; every message and every ordering of
 checks matches it, and conformance/protocol.v1.json pins that. Inputs are decoded JSON.
 """
 

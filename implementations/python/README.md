@@ -2,7 +2,7 @@
 
 Plugin manifest, editor card and chart card validators, and an incremental SSE parser. The TypeScript
 package `@supersolutions/super-protocol` in [`../typescript`](../typescript) is the reference; this port reproduces
-every case in [`../conformance`](../conformance/README.md), messages included. Pure standard
+every case in [`../../conformance`](../../conformance/README.md), messages included. Pure standard
 library, no dependencies. Inputs are decoded JSON (`json.loads`).
 
 ```bash
