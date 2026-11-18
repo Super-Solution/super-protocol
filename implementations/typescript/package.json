@@ -1,6 +1,6 @@
 {
   "name": "@supersolutions/super-protocol",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Apache-2.0 shared protocol for the Super Solution libs: plugin manifest, chat plugin contract, inference gateway and editor card types. Types and validators only, no runtime dependencies.",
   "license": "Apache-2.0",
   "author": "SUPER SOLUTION LABS INC",
@@ -50,6 +50,11 @@
       "types": "./dist/chart.d.ts",
       "import": "./dist/chart.js",
       "default": "./dist/chart.js"
+    },
+    "./theme": {
+      "types": "./dist/theme.d.ts",
+      "import": "./dist/theme.js",
+      "default": "./dist/theme.js"
     }
   },
   "files": [

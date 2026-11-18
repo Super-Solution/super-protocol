@@ -1,7 +1,7 @@
 import { defineConfig } from "tsup";
 
 export default defineConfig({
-  entry: { index: "src/index.ts", plugin: "src/plugin.ts", chat: "src/chat.ts", router: "src/router.ts", editor: "src/editor.ts", chart: "src/chart.ts" },
+  entry: { index: "src/index.ts", plugin: "src/plugin.ts", chat: "src/chat.ts", router: "src/router.ts", editor: "src/editor.ts", chart: "src/chart.ts", theme: "src/theme.ts" },
   format: ["esm"],
   dts: true,
   sourcemap: true,

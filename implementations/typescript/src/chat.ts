@@ -5,6 +5,7 @@
  * host adapts that to React, Vue, Svelte, and so on.
  */
 import { validatePluginManifest, type ManifestIssue, type PluginManifest } from "./plugin.js";
+import type { HostTheme } from "./theme.js";
 
 export type CardValidationResult = { ok: true } | { ok: false; error: string; expected?: string };
 
@@ -29,6 +30,8 @@ export interface CardResponse {
 
 export interface CardMountContext {
   theme: "light" | "dark";
+  /** The host's colours and fonts. Absent on hosts that only report light or dark. */
+  hostTheme?: HostTheme;
   locale?: string;
   /** The spec is still streaming in: valid, but more is coming. */
   partial?: boolean;
@@ -44,12 +47,48 @@ export interface CardMountHandle {
 /** Mounts one card into `container`. Must not touch anything outside it. */
 export type CardMount = (container: HTMLElement, spec: unknown, context: CardMountContext) => CardMountHandle;
 
+/**
+ * What running a tool can do, which decides who may be offered it:
+ * - `read` changes nothing.
+ * - `draft` produces or marks up something the user reviews; nothing leaves the card or document in front of them.
+ * - `act` changes or removes existing state on the user's behalf.
+ */
+export type PluginToolAuthority = "read" | "draft" | "act";
+
+export const PLUGIN_TOOL_AUTHORITIES: readonly PluginToolAuthority[] = ["read", "draft", "act"];
+
+/** The capability presets that grant each authority. A preset not listed here grants nothing. */
+export const PLUGIN_TOOL_PRESETS: Readonly<Record<PluginToolAuthority, readonly string[]>> = {
+  read: ["observer", "draft", "executor"],
+  draft: ["draft", "executor"],
+  act: ["executor"],
+};
+
+export interface PluginToolRunContext {
+  signal?: AbortSignal;
+  /** True only when the host asked the user about this exact call and the user agreed. */
+  confirmed?: boolean;
+}
+
 export interface PluginTool {
   name: string;
   description: string;
   /** JSON Schema of the tool input. */
   inputSchema: Record<string, unknown>;
-  run(input: unknown, context: { signal?: AbortSignal }): Promise<unknown>;
+  /**
+   * Required for a host to offer the tool. A tool with a missing or unknown
+   * authority stays out of every preset: authority is never assumed.
+   */
+  authority?: PluginToolAuthority;
+  /** The host must get the user's agreement before each run and then pass `confirmed: true`. */
+  confirm?: boolean;
+  run(input: unknown, context: PluginToolRunContext): Promise<unknown>;
+}
+
+/** The tool's declared authority, or null when it is missing or not one this protocol version knows. */
+export function pluginToolAuthority(tool: Pick<PluginTool, "authority">): PluginToolAuthority | null {
+  const value: unknown = tool?.authority;
+  return PLUGIN_TOOL_AUTHORITIES.includes(value as PluginToolAuthority) ? (value as PluginToolAuthority) : null;
 }
 
 export interface ChatPlugin {
@@ -74,6 +113,11 @@ export function validateChatPlugin(plugin: ChatPlugin): ManifestIssue[] {
       if (typeof plugin.mounts?.[cap.cardKind!] !== "function") add(`${p}.cardKind`, `plugin has no mount for card kind "${cap.cardKind}"`);
     }
     if (cap.surface === "tool" && !tools.has(cap.toolName!)) add(`${p}.toolName`, `plugin does not define tool "${cap.toolName}"`);
+  });
+  (plugin.tools ?? []).forEach((tool, i) => {
+    // A missing authority is allowed here so older plugins still load; hosts keep such a tool out of every preset.
+    if (tool.authority !== undefined && pluginToolAuthority(tool) === null) add(`tools[${i}].authority`, `must be one of ${PLUGIN_TOOL_AUTHORITIES.join(", ")}`);
+    if (tool.confirm !== undefined && typeof tool.confirm !== "boolean") add(`tools[${i}].confirm`, "must be a boolean");
   });
   return issues;
 }
