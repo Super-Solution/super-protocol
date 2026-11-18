@@ -13,7 +13,17 @@ import {
   validateChatPlugin,
   validateEditorCardSpec,
   validatePluginManifest,
+  PLUGIN_TOOL_PRESETS,
+  THEME_TOKENS,
+  isThemeValue,
+  pluginToolAuthority,
+  readHostTheme,
+  themeTokenVariable,
+  themeVariables,
   type ChatPlugin,
+  type InferenceMessage,
+  type InferenceRequest,
+  type PluginTool,
   type StreamEvent,
 } from "./index.js";
 
@@ -133,5 +143,78 @@ describe("chart", () => {
     expect(validateChartAnnotations([{ ...zone, anchors: [zone.anchors[0]] }])).not.toBeNull();
     expect(validateChartAnnotations([{ ...marker, tone: "purple" }])).not.toBeNull();
     expect(validateChartAnnotations([level, level])).toMatch(/duplicate/);
+  });
+});
+
+describe("plugin tool authority", () => {
+  const tool = (extra: Record<string, unknown>) => ({ name: "t", description: "d", inputSchema: { type: "object" }, run: async () => null, ...extra }) as PluginTool;
+  const base = { manifest: { ...manifest, capabilities: [{ id: "x.run", surface: "tool" as const, toolName: "t" }] } };
+
+  it("reads a declared authority", () => {
+    for (const authority of ["read", "draft", "act"] as const) expect(pluginToolAuthority(tool({ authority }))).toBe(authority);
+  });
+  it("treats a missing or unknown authority as none", () => {
+    expect(pluginToolAuthority(tool({}))).toBeNull();
+    expect(pluginToolAuthority(tool({ authority: "admin" }))).toBeNull();
+    expect(pluginToolAuthority(tool({ authority: "toString" }))).toBeNull();
+    expect(pluginToolAuthority(tool({ authority: 1 }))).toBeNull();
+  });
+  it("still loads an older plugin that declares no authority", () => expect(validateChatPlugin({ ...base, tools: [tool({})] })).toEqual([]));
+  it("refuses an unknown authority and a non-boolean confirm", () => {
+    expect(validateChatPlugin({ ...base, tools: [tool({ authority: "admin" })] }).map((i) => i.path)).toEqual(["tools[0].authority"]);
+    expect(validateChatPlugin({ ...base, tools: [tool({ authority: "act", confirm: "yes" })] }).map((i) => i.path)).toEqual(["tools[0].confirm"]);
+  });
+  it("grants each authority only to the presets at or above it", () => {
+    expect(PLUGIN_TOOL_PRESETS.read).toEqual(["observer", "draft", "executor"]);
+    expect(PLUGIN_TOOL_PRESETS.draft).toEqual(["draft", "executor"]);
+    expect(PLUGIN_TOOL_PRESETS.act).toEqual(["executor"]);
+  });
+});
+
+describe("host theme", () => {
+  it("names one variable per token", () => {
+    expect(themeTokenVariable("text-muted")).toBe("--super-text-muted");
+    expect(new Set(THEME_TOKENS.map(themeTokenVariable)).size).toBe(THEME_TOKENS.length);
+  });
+  it("keeps valid tokens and drops unknown or unsafe ones individually", () => {
+    const theme = readHostTheme({ mode: "dark", tokens: { background: " #000 ", text: "red; position:fixed", accent: "url(https://x.example/a)", nope: "#fff", border: 3 } });
+    expect(theme).toEqual({ mode: "dark", tokens: { background: "#000" } });
+  });
+  it("refuses a theme without a known mode", () => {
+    for (const value of [null, "dark", {}, { mode: "sepia", tokens: {} }]) expect(readHostTheme(value)).toBeNull();
+  });
+  it("accepts a theme with no tokens", () => expect(readHostTheme({ mode: "light" })).toEqual({ mode: "light", tokens: {} }));
+  it("accepts real CSS values and rejects declaration breakers", () => {
+    for (const ok of ["#0f1115", "rgb(1 2 3 / 50%)", "color-mix(in srgb, red 20%, transparent)", 'ui-sans-serif, "Segoe UI", sans-serif', "12px"]) expect(isThemeValue(ok)).toBe(true);
+    for (const bad of ["", "  ", "a;b", "a}b", "/* x */", "@import 'x'", "x".repeat(257), 7, null]) expect(isThemeValue(bad)).toBe(false);
+  });
+  it("turns a theme into CSS variables without unsafe values", () => {
+    expect(themeVariables({ mode: "light", tokens: { text: "#111", accent: "x;y" } })).toEqual({ "--super-text": "#111" });
+  });
+});
+
+describe("inference request shapes", () => {
+  it("keeps the original text message valid and adds the tool forms", () => {
+    const messages: InferenceMessage[] = [
+      { role: "system", content: "s" },
+      { role: "user", content: [{ type: "text", text: "see" }, { type: "image", url: "https://e.example/a.png", detail: "low" }] },
+      { role: "assistant", tool_calls: [{ id: "c1", name: "look", arguments: "{}" }] },
+      { role: "tool", tool_call_id: "c1", content: "ok", is_error: false },
+    ];
+    const request: InferenceRequest = { service: "s", customer_id: "c", messages, tools: [{ name: "look", input_schema: { type: "object" } }], tool_choice: { name: "look" } };
+    expect(request.messages).toHaveLength(4);
+  });
+  it("tool call events are not terminal", () => {
+    expect(isTerminalEvent({ type: "output.tool_call.delta" })).toBe(false);
+    expect(isTerminalEvent({ type: "output.tool_call.completed" })).toBe(false);
+  });
+  it("collectText ignores tool call events", async () => {
+    const events: StreamEvent[] = [
+      { type: "output.tool_call.delta", request_id: "r", sequence: 1, index: 0, id: "c", name: "n", arguments_delta: "{" },
+      { type: "output.delta", request_id: "r", sequence: 2, text: "hi" },
+      { type: "output.tool_call.completed", request_id: "r", sequence: 3, index: 0, id: "c", name: "n", arguments: "{}" },
+      { type: "request.completed", request_id: "r", sequence: 4, execution_status: "succeeded", billing_status: "settled", finish_reason: "tool_calls" },
+    ];
+    expect(await collectText((async function* () { yield* events; })())).toBe("hi");
   });
 });

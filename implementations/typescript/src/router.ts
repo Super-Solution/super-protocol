@@ -4,10 +4,43 @@
  * gateway can implement it. Wire shapes match the Super Router HTTP API.
  */
 
-export interface InferenceMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
+/** One part of a multi-part user message. Plain text messages keep using a `content` string. */
+export type InferenceContentPart =
+  | { type: "text"; text: string }
+  /** An `https:` URL or a `data:image/(png|jpeg|gif|webp);base64,` URL. */
+  | { type: "image"; url: string; detail?: "auto" | "low" | "high" };
+
+/** A tool call the model made. `arguments` is the JSON text exactly as the model wrote it. */
+export interface InferenceToolCall {
+  id: string;
+  name: string;
+  arguments: string;
 }
+
+/**
+ * A message on the wire. The first form is the original one and stays valid;
+ * the others are only sent by a caller that uses tools or images.
+ */
+export type InferenceMessage =
+  | { role: "system" | "user" | "assistant"; content: string }
+  | { role: "user"; content: InferenceContentPart[] }
+  | { role: "assistant"; content?: string; tool_calls: InferenceToolCall[] }
+  /** The result of the tool call `tool_call_id`, which an earlier assistant message must have made. */
+  | { role: "tool"; tool_call_id: string; content: string; is_error?: boolean };
+
+/** A tool the model may call. */
+export interface InferenceTool {
+  /** Letters, digits, `_` and `-`; at most 64 characters. */
+  name: string;
+  description?: string;
+  /** JSON Schema of the arguments; must describe an object. */
+  input_schema: Record<string, unknown>;
+}
+
+export type InferenceToolChoice = "auto" | "none" | "required" | { name: string };
+
+/** Why the model stopped. Absent on gateways that do not report it. */
+export type InferenceFinishReason = "stop" | "length" | "tool_calls";
 
 export interface Usage {
   input: number;
@@ -26,17 +59,30 @@ export interface InferenceRequest {
   service_version?: number;
   customer_id: string;
   messages: InferenceMessage[];
+  /** Absent means the request declares no tools. A gateway that cannot call tools must refuse, not ignore, them. */
+  tools?: InferenceTool[];
+  tool_choice?: InferenceToolChoice;
   max_output_tokens?: number;
   timeout_ms?: number;
 }
 
 export type ExecutionStatus = "succeeded" | "failed" | "cancelled" | "unknown";
 
+/** What the usage of a finished request is known to be. `meters` is present once the usage is confirmed. */
+export interface InferenceUsage {
+  status: string;
+  meters?: Usage;
+}
+
 export type StreamEvent =
   | { type: "request.started"; request_id: string; sequence: number; service_version: number }
   | { type: "output.delta"; request_id: string; sequence: number; text: string }
-  | { type: "request.completed"; request_id: string; sequence: number; execution_status: ExecutionStatus; billing_status: string }
-  | { type: "request.failed"; request_id: string; sequence: number; execution_status?: ExecutionStatus; billing_status?: string; error?: { code: string } }
+  /** Part of a tool call's arguments. `id` and `name` arrive on the first delta of each `index`. */
+  | { type: "output.tool_call.delta"; request_id: string; sequence: number; index: number; id?: string; name?: string; arguments_delta: string }
+  /** A whole tool call. Sent only after the model finished normally, so a cut-off call is never reported as complete. */
+  | { type: "output.tool_call.completed"; request_id: string; sequence: number; index: number; id: string; name: string; arguments: string }
+  | { type: "request.completed"; request_id: string; sequence: number; execution_status: ExecutionStatus; billing_status: string; finish_reason?: InferenceFinishReason; usage?: InferenceUsage }
+  | { type: "request.failed"; request_id: string; sequence: number; execution_status?: ExecutionStatus; billing_status?: string; error?: { code: string }; usage?: InferenceUsage }
   | { type: "request.replayed"; request_id: string; sequence: number };
 
 export interface InferenceResult {
@@ -44,8 +90,9 @@ export interface InferenceResult {
   execution_status: ExecutionStatus;
   billing_status: string;
   /** Absent when the request is read back later: the router does not store completions. */
-  output?: { role: "assistant"; content: string };
-  usage: { status: string; meters?: Usage };
+  output?: { role: "assistant"; content: string; tool_calls?: InferenceToolCall[] };
+  finish_reason?: InferenceFinishReason;
+  usage: InferenceUsage;
 }
 
 export interface InferenceGateway {
