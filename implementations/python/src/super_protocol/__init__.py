@@ -7,6 +7,8 @@ from .validators import (
     CHART_LIMITS,
     CHART_TYPES,
     EDITOR_CARD_KIND,
+    PLOT_CARD_KIND,
+    PLOT_LIMITS,
     PLUGIN_MANIFEST_VERSION,
     CardResult,
     ManifestIssue,
@@ -17,6 +19,7 @@ from .validators import (
     validate_editor_card_spec,
     validate_market_bar,
     validate_period,
+    validate_plot_card_spec,
     validate_plugin_manifest,
     validate_symbol,
 )
@@ -27,6 +30,8 @@ __all__ = [
     "CHART_TYPES",
     "DEFAULT_MAX_FRAME_BYTES",
     "EDITOR_CARD_KIND",
+    "PLOT_CARD_KIND",
+    "PLOT_LIMITS",
     "PLUGIN_MANIFEST_VERSION",
     "CardResult",
     "Frame",
@@ -40,6 +45,7 @@ __all__ = [
     "validate_editor_card_spec",
     "validate_market_bar",
     "validate_period",
+    "validate_plot_card_spec",
     "validate_plugin_manifest",
     "validate_symbol",
 ]

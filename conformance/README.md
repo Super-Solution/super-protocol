@@ -6,7 +6,7 @@ cases exactly, error messages included.
 
 | File | What it pins |
 | --- | --- |
-| `protocol.v1.json` | `plugin_manifest` (issue lists), `editor_card` and `chart_card` (result objects), `terminal_event`, and `sse` (hex-encoded byte chunks, optional frame limit, expected frames or the error code) |
+| `protocol.v1.json` | `plugin_manifest` (issue lists), `editor_card`, `chart_card` and `plot_card` (result objects), `terminal_event`, and `sse` (hex-encoded byte chunks, optional frame limit, expected frames or the error code) |
 
 Known limits of the data: URLs are realistic base URLs (no percent-encoded or internationalised
 hosts), strings are valid UTF-8 (a multi-byte character may be split across SSE chunks), and string
