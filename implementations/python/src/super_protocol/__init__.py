@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Python port of the Super Solution protocol validators and SSE parser."""
 
+from .ref import CARD_REF_LIMITS, CARD_REF_SCHEME, CardRef, format_card_ref, parse_card_ref, parse_chart_ref
 from .sse import DEFAULT_MAX_FRAME_BYTES, Frame, SSEParser, StreamFrameTooLarge
 from .validators import (
     CHART_CARD_KIND,
@@ -25,6 +26,12 @@ from .validators import (
 )
 
 __all__ = [
+    "CARD_REF_LIMITS",
+    "CARD_REF_SCHEME",
+    "CardRef",
+    "format_card_ref",
+    "parse_card_ref",
+    "parse_chart_ref",
     "CHART_CARD_KIND",
     "CHART_LIMITS",
     "CHART_TYPES",

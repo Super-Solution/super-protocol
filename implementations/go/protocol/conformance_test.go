@@ -29,6 +29,19 @@ type fixtures struct {
 		Value  any        `json:"value"`
 		Expect CardResult `json:"expect"`
 	} `json:"plot_card"`
+	CardRefParse []struct {
+		Value  any          `json:"value"`
+		Expect CardRefParse `json:"expect"`
+	} `json:"card_ref_parse"`
+	CardRefFormat []struct {
+		Value  any     `json:"value"`
+		Expect *string `json:"expect"`
+	} `json:"card_ref_format"`
+	ChartRef []struct {
+		Value  *CardRef       `json:"value"`
+		Href   string         `json:"href"`
+		Expect *ChartRefParse `json:"expect"`
+	} `json:"chart_ref"`
 	TerminalEvent []struct {
 		Type   string `json:"type"`
 		Expect bool   `json:"expect"`
@@ -195,5 +208,38 @@ func BenchmarkChartCard(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		ValidateChartCardSpec(f.ChartCard[i%len(f.ChartCard)].Value)
+	}
+}
+
+func TestCardRefs(t *testing.T) {
+	f := load(t)
+	if len(f.CardRefParse) < 80 || len(f.CardRefFormat) < 60 || len(f.ChartRef) < 30 {
+		t.Fatalf("only %d/%d/%d cases", len(f.CardRefParse), len(f.CardRefFormat), len(f.ChartRef))
+	}
+	for i, c := range f.CardRefParse {
+		if got := ParseCardRef(c.Value); !reflect.DeepEqual(got, c.Expect) {
+			t.Errorf("card_ref_parse[%d] %v: %+v, want %+v", i, c.Value, got, c.Expect)
+		}
+	}
+	for i, c := range f.CardRefFormat {
+		got, ok := FormatCardRef(c.Value)
+		switch {
+		case c.Expect == nil && ok:
+			t.Errorf("card_ref_format[%d] %v: %q, want refusal", i, c.Value, got)
+		case c.Expect != nil && (!ok || got != *c.Expect):
+			t.Errorf("card_ref_format[%d] %v: %q (ok %v), want %q", i, c.Value, got, ok, *c.Expect)
+		}
+	}
+	for i, c := range f.ChartRef {
+		if c.Value == nil {
+			if c.Expect != nil {
+				t.Errorf("chart_ref[%d]: no ref but an expectation", i)
+			}
+			continue
+		}
+		got := ParseChartRef(*c.Value)
+		if c.Expect == nil || !reflect.DeepEqual(got, *c.Expect) {
+			t.Errorf("chart_ref[%d] %s: %+v, want %+v", i, c.Href, got, c.Expect)
+		}
 	}
 }
