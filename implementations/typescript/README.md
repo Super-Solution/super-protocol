@@ -11,7 +11,7 @@ Rule: this package must never import from a GPL/AGPL package. `src/boundary.test
 | `@supersolutions/super-protocol/plugin` | `PluginManifest` v0 and `validatePluginManifest` |
 | `@supersolutions/super-protocol/chat` | `ChatPlugin`: card kinds, framework-neutral `CardMount`, tools with declared authority, `validateChatPlugin` |
 | `@supersolutions/super-protocol/router` | `InferenceGateway`, request/usage/stream-event types including tool calls and image parts, `parseSSE`, `collectText` |
-| `@supersolutions/super-protocol/plot` | the generic `super.plot` card kind: an envelope `{ spec, alt }` around a plot spec the protocol never reads, so any plotting lib can implement it and new plot types need no protocol change |
+| `@supersolutions/super-protocol/plot` | the `super.plot` card kind: a chart from any plotting library in chat, with `alt` text and the plain `PLOT_FALLBACK_MESSAGE` the user sees when it can't be drawn; new plot types need no protocol change |
 | `@supersolutions/super-protocol/theme` | `HostTheme`: the colour and font tokens a host passes to plugin cards, as `--super-*` variables |
 | `@supersolutions/super-protocol/editor` | the `super-editor.document` card kind, its spec and validator |
 | `@supersolutions/super-protocol/chart` | market-data contracts (`Datafeed`, `MarketBar`, `SymbolInfo`, `Period`), the annotation spec and the `super-chart.chart` card kind with its validator |

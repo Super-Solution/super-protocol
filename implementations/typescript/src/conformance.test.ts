@@ -14,6 +14,7 @@ import {
   validateEditorCardSpec,
   validatePlotCardSpec,
   validatePluginManifest,
+  PLOT_FALLBACK_MESSAGE,
 } from "./index.js";
 
 const data = JSON.parse(readFileSync(new URL("../../../conformance/protocol.v1.json", import.meta.url), "utf8"));
@@ -33,6 +34,9 @@ describe("conformance data", () => {
   it("plot card", () => {
     expect(data.plot_card.length).toBeGreaterThanOrEqual(60);
     for (const c of data.plot_card) expect(validatePlotCardSpec(c.value)).toEqual(c.expect);
+  });
+  it("plot fallback message", () => {
+    expect(PLOT_FALLBACK_MESSAGE).toBe(data.plot_fallback_message);
   });
   it("card refs", () => {
     expect(data.card_ref_parse.length).toBeGreaterThanOrEqual(80);

@@ -21,6 +21,10 @@ const (
 	PlotCardKind          = "super.plot"
 )
 
+// PlotFallbackMessage is what the user sees in place of a plot that cannot be drawn, followed by the
+// card's alt. The technical reason goes to the developer log (and may go back to the model), never to the user.
+const PlotFallbackMessage = "This chart can't be shown here."
+
 var (
 	// ChartTypes are the chart styles a chart card may ask for.
 	ChartTypes = []string{"candles", "hollow-candles", "ohlc", "line", "area", "baseline", "heikin-ashi"}
@@ -465,7 +469,8 @@ func ValidateChartCardSpec(spec any) CardResult {
 
 const plotExpected = `spec: { ...a plot spec }, alt: "one sentence saying what the plot shows"`
 
-// ValidatePlotCardSpec checks the spec of a `super.plot` card. The inner `spec` is opaque: the renderer validates it.
+// ValidatePlotCardSpec checks the envelope of a `super.plot` card; the inner `spec` is opaque and checked by the
+// plugin that draws it. The errors are for the model and the developer log, not for the user.
 func ValidatePlotCardSpec(spec any) CardResult {
 	if !isObject(spec) {
 		return fail("Plot card spec must be an object.")

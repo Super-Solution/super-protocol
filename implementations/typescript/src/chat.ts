@@ -8,6 +8,10 @@ import { validatePluginManifest, type ManifestIssue, type PluginManifest } from 
 import type { CardRef, CardRefEvent, CardRefResult } from "./ref.js";
 import type { HostTheme } from "./theme.js";
 
+/**
+ * `error` and `expected` are written for the model (so it can send a corrected
+ * spec) and for developer logs. A host never shows them to the user.
+ */
 export type CardValidationResult = { ok: true } | { ok: false; error: string; expected?: string };
 
 /** Structurally identical to super-chat's `CardKindDefinition`, so a host can register it as is. */
@@ -52,7 +56,13 @@ export interface CardMountHandle {
   destroy(): void;
 }
 
-/** Mounts one card into `container`. Must not touch anything outside it. */
+/**
+ * Mounts one card into `container`. Must not touch anything outside it.
+ * Whatever lands in `container` is seen by the user: when the spec cannot be
+ * drawn, show a plain sentence there and send the technical reason to the
+ * developer log, never into the container. A host that catches a throwing
+ * mount logs the error and shows its own plain fallback, not the error text.
+ */
 export type CardMount = (container: HTMLElement, spec: unknown, context: CardMountContext) => CardMountHandle;
 
 /**
