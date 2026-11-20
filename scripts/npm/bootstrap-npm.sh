@@ -9,7 +9,7 @@
 #                                          package of that repo (npm >= 11.15, account 2FA)
 #   bootstrap-npm.sh list [repo]           print the table this script uses
 #
-# repo = super-protocol | super-chat | super-router | super-editor | super-chart (default: all, for
+# repo = super-protocol | super-chat | super-router | super-editor | super-chart | super-plot (default: all, for
 # `placeholders` and `list`; `trust` needs one repo, because a new trust expires after 2 days
 # without a successful publish: run it the day you release that repo).
 #
@@ -60,6 +60,10 @@ super-chart|npm-publish.yml|@supersolutions/super-chart-core|GPL-3.0-or-later
 super-chart|npm-publish.yml|@supersolutions/super-chart-superscript|GPL-3.0-or-later
 super-chart|npm-publish.yml|@supersolutions/super-chart-web|GPL-3.0-or-later
 super-chart|npm-publish.yml|@supersolutions/super-chart-chat-plugin|GPL-3.0-or-later
+super-plot|npm-publish.yml|@supersolutions/super-plot-core|Apache-2.0
+super-plot|npm-publish.yml|@supersolutions/super-plot-web|Apache-2.0
+super-plot|npm-publish.yml|@supersolutions/super-plot-react|Apache-2.0
+super-plot|npm-publish.yml|@supersolutions/super-plot-chat-plugin|Apache-2.0
 '
 
 mode="${1:-}"; want="${2:-}"
