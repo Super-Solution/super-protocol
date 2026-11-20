@@ -5,7 +5,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  formatCardRef,
   isTerminalEvent,
+  parseCardRef,
+  parseChartRef,
   parseSSE,
   validateChartCardSpec,
   validateEditorCardSpec,
@@ -30,6 +33,12 @@ describe("conformance data", () => {
   it("plot card", () => {
     expect(data.plot_card.length).toBeGreaterThanOrEqual(60);
     for (const c of data.plot_card) expect(validatePlotCardSpec(c.value)).toEqual(c.expect);
+  });
+  it("card refs", () => {
+    expect(data.card_ref_parse.length).toBeGreaterThanOrEqual(80);
+    for (const c of data.card_ref_parse) expect(parseCardRef(c.value !== null && typeof c.value === "object" && !Array.isArray(c.value) && c.value.undefined === true ? undefined : c.value)).toEqual(c.expect);
+    for (const c of data.card_ref_format) expect(formatCardRef(c.value)).toEqual(c.expect);
+    for (const c of data.chart_ref) expect(c.value === null ? null : parseChartRef(c.value)).toEqual(c.expect);
   });
   it("terminal events", () => {
     for (const c of data.terminal_event) expect(isTerminalEvent({ type: c.type } as never)).toBe(c.expect);

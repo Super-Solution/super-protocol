@@ -51,6 +51,11 @@
       "import": "./dist/chart.js",
       "default": "./dist/chart.js"
     },
+    "./ref": {
+      "types": "./dist/ref.d.ts",
+      "import": "./dist/ref.js",
+      "default": "./dist/ref.js"
+    },
     "./plot": {
       "types": "./dist/plot.d.ts",
       "import": "./dist/plot.js",

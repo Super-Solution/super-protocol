@@ -21,6 +21,8 @@ licenses**. This repository is that neutral ground:
   how a host mounts it, framework-neutral.
 - **Inference gateway and stream events**: the request, usage and stream-event types plus an
   incremental SSE parser.
+- **Card references**: the `ref:` link that lets text in a message point into a card, and the `ref()` method a card
+  answers it with (see [`docs/CARD-REFS.md`](docs/CARD-REFS.md)).
 - **Card contracts**: the `super-editor.document`, `super-chart.chart` and generic `super.plot` card
   kinds, the chart annotation spec and the market-data `Datafeed` contract. `super.plot` is an
   envelope `{ spec, alt }` around a plot spec the protocol does not interpret (see below).

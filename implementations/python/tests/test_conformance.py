@@ -9,7 +9,10 @@ from typing import Any
 from super_protocol import (
     SSEParser,
     StreamFrameTooLarge,
+    format_card_ref,
     is_terminal_event,
+    parse_card_ref,
+    parse_chart_ref,
     validate_chart_card_spec,
     validate_editor_card_spec,
     validate_plot_card_spec,
@@ -50,6 +53,19 @@ class Conformance(unittest.TestCase):
 
     def test_plot_card(self) -> None:
         self.check("plot_card", lambda c: validate_plot_card_spec(c["value"]), 60)
+
+    def test_card_ref_parse(self) -> None:
+        self.check("card_ref_parse", lambda c: parse_card_ref(c["value"]), 80)
+
+    def test_card_ref_format(self) -> None:
+        self.check("card_ref_format", lambda c: format_card_ref(c["value"]), 60)
+
+    def test_chart_ref(self) -> None:
+        cases = [c for c in DATA["chart_ref"] if c["value"] is not None]
+        self.assertGreaterEqual(len(DATA["chart_ref"]), 30)
+        for i, case in enumerate(cases):
+            with self.subTest(case="chart_ref", i=i, href=case["href"]):
+                self.assertEqual(parse_chart_ref(case["value"]), case["expect"])
 
     def test_terminal_event(self) -> None:
         self.check("terminal_event", lambda c: is_terminal_event(c["type"]), 8)

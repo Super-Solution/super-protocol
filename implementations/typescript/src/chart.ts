@@ -81,14 +81,21 @@ export interface Datafeed {
   resolvePeriod?(period: Pick<Period, "multiplier" | "timespan">): Period | null;
 }
 
-export type ChartAnnotationKind = "level" | "zone" | "marker";
+export type ChartAnnotationKind = "level" | "zone" | "marker" | "trend" | "ray" | "fibonacci" | "plan";
+
+/** How many anchors each kind takes. `level`, `zone` and `marker` are the basic marks; the rest are drawn by the chart's templates. */
+export const CHART_ANNOTATION_ANCHORS: Readonly<Record<ChartAnnotationKind, number>> = Object.freeze({ level: 1, zone: 2, marker: 1, trend: 2, ray: 2, fibonacci: 2, plan: 3 });
+export const CHART_ANNOTATION_KINDS = Object.keys(CHART_ANNOTATION_ANCHORS) as ChartAnnotationKind[];
 export type ChartAnnotationTone = "bull" | "bear" | "neutral" | "accent";
 
 /**
  * A mark an agent or a person places on the chart. `level` is a horizontal
  * price line (one anchor, price required); `zone` is a price band over a time
  * range (two anchors, prices required); `marker` is a point label (one anchor).
- * Time is milliseconds since the epoch, like bars.
+ * `trend` is a line through two points and `ray` the same line extended to the
+ * right; `fibonacci` is retracement levels between two points; `plan` is a
+ * trade plan with entry, target and stop (three anchors, in that order). Each of
+ * those anchors needs a price. Time is milliseconds since the epoch, like bars.
  */
 export interface ChartAnnotation {
   key: string;
@@ -98,6 +105,8 @@ export interface ChartAnnotation {
   tone?: ChartAnnotationTone;
   /** CSS color; overrides the tone. */
   color?: string;
+  /** Options for `trend`, `ray`, `fibonacci` and `plan`, for example `{ extend: "right" }`. Scalar values only. */
+  params?: Record<string, number | string | boolean>;
 }
 
 export interface ChartIndicator {
@@ -127,7 +136,7 @@ export interface ChartCardSpec {
   annotations?: ChartAnnotation[];
 }
 
-export const CHART_LIMITS = Object.freeze({ bars: 20000, annotations: 256, indicators: 12, anchors: 2, textLength: 2048, keyLength: 128, height: [160, 1200] as const });
+export const CHART_LIMITS = Object.freeze({ bars: 20000, annotations: 256, indicators: 12, anchors: 3, textLength: 2048, keyLength: 128, params: 16, paramKeyLength: 32, paramStringLength: 128, height: [160, 1200] as const });
 
 const fail = (error: string, expected?: string): CardValidationResult => (expected ? { ok: false, error, expected } : { ok: false, error });
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -162,16 +171,29 @@ export function validateMarketBar(v: unknown): string | null {
 export function validateChartAnnotation(v: unknown): string | null {
   if (!isObject(v)) return "an annotation must be an object.";
   if (typeof v.key !== "string" || v.key.trim() === "" || v.key.length > CHART_LIMITS.keyLength) return `annotation.key must be a non-empty string of at most ${CHART_LIMITS.keyLength} characters.`;
-  if (v.kind !== "level" && v.kind !== "zone" && v.kind !== "marker") return 'annotation.kind must be "level", "zone" or "marker".';
-  if (!Array.isArray(v.anchors) || v.anchors.length === 0 || v.anchors.length > CHART_LIMITS.anchors) return "annotation.anchors must hold one or two anchors.";
+  if (!CHART_ANNOTATION_KINDS.includes(v.kind as ChartAnnotationKind)) return 'annotation.kind must be "level", "zone", "marker", "trend", "ray", "fibonacci" or "plan".';
+  if (!Array.isArray(v.anchors) || v.anchors.length === 0 || v.anchors.length > CHART_LIMITS.anchors) return "annotation.anchors must hold one to three anchors.";
   for (const a of v.anchors) {
     if (!isObject(a) || !finite(a.time)) return "annotation anchors need a finite time.";
     if (a.price !== undefined && !finite(a.price)) return "annotation anchor price must be a finite number.";
   }
   const anchors = v.anchors as Array<{ price?: number }>;
-  if (v.kind === "level" && (anchors.length !== 1 || anchors[0]?.price === undefined)) return "a level needs exactly one anchor with a price.";
-  if (v.kind === "zone" && (anchors.length !== 2 || anchors.some((a) => a.price === undefined))) return "a zone needs two anchors, both with a price.";
-  if (v.kind === "marker" && anchors.length !== 1) return "a marker needs exactly one anchor.";
+  const kind = v.kind as ChartAnnotationKind;
+  const needed = CHART_ANNOTATION_ANCHORS[kind];
+  if (kind === "level" && (anchors.length !== 1 || anchors[0]?.price === undefined)) return "a level needs exactly one anchor with a price.";
+  else if (kind === "zone" && (anchors.length !== 2 || anchors.some((a) => a.price === undefined))) return "a zone needs two anchors, both with a price.";
+  else if (kind === "marker" && anchors.length !== 1) return "a marker needs exactly one anchor.";
+  else if (kind !== "level" && kind !== "zone" && kind !== "marker" && (anchors.length !== needed || anchors.some((a) => a.price === undefined))) return `a ${kind} needs ${needed} anchors, all with a price.`;
+  if (v.params !== undefined) {
+    if (kind === "level" || kind === "zone" || kind === "marker") return "annotation.params applies only to trend, ray, fibonacci and plan.";
+    if (!isObject(v.params)) return "annotation.params must be an object.";
+    const entries = Object.entries(v.params);
+    if (entries.length > CHART_LIMITS.params) return `annotation.params may hold at most ${CHART_LIMITS.params} entries.`;
+    for (const [name, value] of entries) {
+      if (!/^[A-Za-z][A-Za-z0-9_-]{0,31}$/.test(name)) return "annotation.params keys must be 1 to 32 letters, digits, dash or underscore, starting with a letter.";
+      if (typeof value === "number" ? !Number.isFinite(value) : typeof value === "string" ? value.length > CHART_LIMITS.paramStringLength : typeof value !== "boolean") return `annotation.params.${name} must be a finite number, a boolean or a string of at most ${CHART_LIMITS.paramStringLength} characters.`;
+    }
+  }
   if (v.text !== undefined && (typeof v.text !== "string" || v.text.length > CHART_LIMITS.textLength)) return `annotation.text must be a string of at most ${CHART_LIMITS.textLength} characters.`;
   if (v.tone !== undefined && !["bull", "bear", "neutral", "accent"].includes(v.tone as string)) return "annotation.tone must be bull, bear, neutral or accent.";
   if (v.color !== undefined && (typeof v.color !== "string" || v.color.length > 128)) return "annotation.color must be a short CSS color string.";
@@ -234,7 +256,7 @@ export function validateChartCardSpec(spec: unknown): CardValidationResult {
 
 export const chartCardKind: CardKindDefinition = {
   kind: CHART_CARD_KIND,
-  summary: "A financial chart the user can pan, zoom, draw on and replay: candles or lines, indicators, and your annotations (levels, zones, markers).",
+  summary: "A financial chart the user can pan, zoom, draw on and replay: candles or lines, indicators, and your annotations (levels, zones, markers, trend lines, rays, fibonacci retracements, trade plans).",
   schema: {
     type: "object",
     required: ["kind", "symbol", "period"],
@@ -249,7 +271,7 @@ export const chartCardKind: CardKindDefinition = {
       bars: { type: "array", description: "Inline OHLCV bars, oldest first. Use this or `feed`.", maxItems: CHART_LIMITS.bars },
       feed: { type: "object", required: ["id"], properties: { id: { type: "string" } }, description: "A datafeed the host registered." },
       indicators: { type: "array", maxItems: CHART_LIMITS.indicators, items: { type: "object", required: ["name"], properties: { name: { type: "string" }, params: { type: "array", items: { type: "number" } } } } },
-      annotations: { type: "array", maxItems: CHART_LIMITS.annotations, items: { type: "object", required: ["key", "kind", "anchors"], properties: { key: { type: "string" }, kind: { enum: ["level", "zone", "marker"] }, anchors: { type: "array", maxItems: 2 }, text: { type: "string" }, tone: { enum: ["bull", "bear", "neutral", "accent"] }, color: { type: "string" } } } },
+      annotations: { type: "array", maxItems: CHART_LIMITS.annotations, items: { type: "object", required: ["key", "kind", "anchors"], properties: { key: { type: "string" }, kind: { enum: [...CHART_ANNOTATION_KINDS], description: "level: 1 anchor with price. zone: 2 anchors with price. marker: 1 anchor. trend and ray: 2 anchors with price. fibonacci: 2 anchors with price. plan: 3 anchors with price (entry, target, stop)." }, anchors: { type: "array", maxItems: CHART_LIMITS.anchors }, text: { type: "string" }, tone: { enum: ["bull", "bear", "neutral", "accent"] }, color: { type: "string" }, params: { type: "object", description: "Options for trend, ray, fibonacci and plan, for example { extend: \"right\" } or { levels: \"0,0.5,1\" }." } } } },
     },
   },
   validate: validateChartCardSpec,

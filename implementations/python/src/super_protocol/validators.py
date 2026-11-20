@@ -18,7 +18,11 @@ EDITOR_CARD_KIND = "super-editor.document"
 CHART_CARD_KIND = "super-chart.chart"
 PLOT_CARD_KIND = "super.plot"
 CHART_TYPES = ("candles", "hollow-candles", "ohlc", "line", "area", "baseline", "heikin-ashi")
-CHART_LIMITS = {"bars": 20000, "annotations": 256, "indicators": 12, "anchors": 2, "textLength": 2048, "keyLength": 128}
+CHART_LIMITS = {"bars": 20000, "annotations": 256, "indicators": 12, "anchors": 3, "textLength": 2048, "keyLength": 128}
+CHART_ANNOTATION_ANCHORS = {"level": 1, "zone": 2, "marker": 1, "trend": 2, "ray": 2, "fibonacci": 2, "plan": 3}
+_PARAM_NAME = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,31}")
+_MAX_PARAMS = 16
+_MAX_PARAM_STRING = 128
 CHART_HEIGHT = (160, 1200)
 PLOT_LIMITS = {"alt": 2048, "idLength": 128}  # the height range is CHART_HEIGHT, as for a chart card
 SURFACES = ("card", "panel", "tool", "canvas")
@@ -202,11 +206,11 @@ def validate_chart_annotation(v: Any) -> str | None:
     if not js.is_string(key) or js.trim(key) == "" or js.js_length(key) > key_limit:
         return f"annotation.key must be a non-empty string of at most {key_limit} characters."
     kind = get(v, "kind")
-    if kind != "level" and kind != "zone" and kind != "marker":
-        return 'annotation.kind must be "level", "zone" or "marker".'
+    if not js.is_string(kind) or kind not in CHART_ANNOTATION_ANCHORS:
+        return 'annotation.kind must be "level", "zone", "marker", "trend", "ray", "fibonacci" or "plan".'
     anchors = get(v, "anchors")
     if not isinstance(anchors, list) or len(anchors) == 0 or len(anchors) > CHART_LIMITS["anchors"]:
-        return "annotation.anchors must hold one or two anchors."
+        return "annotation.anchors must hold one to three anchors."
     for a in anchors:
         if not js.is_object(a) or not js.finite(get(a, "time")):
             return "annotation anchors need a finite time."
@@ -214,12 +218,29 @@ def validate_chart_annotation(v: Any) -> str | None:
         if price is not UNDEFINED and not js.finite(price):
             return "annotation anchor price must be a finite number."
     priced = ["price" in a for a in anchors]
+    needed = CHART_ANNOTATION_ANCHORS[kind]
     if kind == "level" and (len(anchors) != 1 or not priced[0]):
         return "a level needs exactly one anchor with a price."
     if kind == "zone" and (len(anchors) != 2 or not all(priced)):
         return "a zone needs two anchors, both with a price."
     if kind == "marker" and len(anchors) != 1:
         return "a marker needs exactly one anchor."
+    if kind not in ("level", "zone", "marker") and (len(anchors) != needed or not all(priced)):
+        return f"a {kind} needs {needed} anchors, all with a price."
+    params = get(v, "params")
+    if params is not UNDEFINED:
+        if kind in ("level", "zone", "marker"):
+            return "annotation.params applies only to trend, ray, fibonacci and plan."
+        if not js.is_object(params):
+            return "annotation.params must be an object."
+        if len(params) > _MAX_PARAMS:
+            return f"annotation.params may hold at most {_MAX_PARAMS} entries."
+        for name, value in params.items():
+            if _PARAM_NAME.fullmatch(name) is None:
+                return "annotation.params keys must be 1 to 32 letters, digits, dash or underscore, starting with a letter."  # noqa: E501
+            valid = isinstance(value, bool) or js.finite(value) or (js.is_string(value) and js.js_length(value) <= _MAX_PARAM_STRING)  # noqa: E501
+            if not valid:
+                return f"annotation.params.{name} must be a finite number, a boolean or a string of at most {_MAX_PARAM_STRING} characters."  # noqa: E501
     text = get(v, "text")
     if text is not UNDEFINED and (not js.is_string(text) or js.js_length(text) > text_limit):
         return f"annotation.text must be a string of at most {text_limit} characters."
