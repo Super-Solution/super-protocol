@@ -5,6 +5,7 @@
  * host adapts that to React, Vue, Svelte, and so on.
  */
 import { validatePluginManifest, type ManifestIssue, type PluginManifest } from "./plugin.js";
+import type { CardRef, CardRefEvent, CardRefResult } from "./ref.js";
 import type { HostTheme } from "./theme.js";
 
 /**
@@ -45,6 +46,13 @@ export interface CardMountContext {
 
 export interface CardMountHandle {
   update(spec: unknown, context: CardMountContext): void;
+  /**
+   * Optional. Text in the conversation points into this card (see `ref.ts`). `enter` and `leave` are the reader
+   * hovering or focusing the link: show and clear a highlight, and change nothing else. `activate` is a click, Enter
+   * or tap: bring the part into view and move focus to it. `null` clears every highlight. Answer `ok: false` with a
+   * code and reason when nothing in the card matches, so the host can show the link as plain text.
+   */
+  ref?(ref: CardRef | null, event: CardRefEvent): CardRefResult;
   destroy(): void;
 }
 

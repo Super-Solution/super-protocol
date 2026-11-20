@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -30,6 +31,10 @@ var (
 	surfaces   = []string{"card", "panel", "tool", "canvas"}
 	tones      = []string{"bull", "bear", "neutral", "accent"}
 
+	// annotationAnchors is how many anchors each annotation kind takes.
+	annotationAnchors = map[string]int{"level": 1, "zone": 2, "marker": 1, "trend": 2, "ray": 2, "fibonacci": 2, "plan": 3}
+	paramNameRe       = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{0,31}$`)
+
 	nameRe         = regexp.MustCompile(`^(@[a-z0-9\-~][a-z0-9\-._~]*/)?[a-z0-9\-~][a-z0-9\-._~]*$`)
 	semverRe       = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.\-]+)?(\+[0-9A-Za-z.\-]+)?$`)
 	capabilityIDRe = regexp.MustCompile(`^[a-z][a-z0-9\-]*(\.[a-z][a-z0-9\-]*)+$`)
@@ -39,11 +44,13 @@ const (
 	maxBars        = 20000
 	maxAnnotations = 256
 	maxIndicators  = 12
-	maxAnchors     = 2
+	maxAnchors     = 3
 	maxTextLength  = 2048
 	maxKeyLength   = 128
 	minHeight      = 160
 	maxHeight      = 1200
+	maxParams      = 16
+	maxParamString = 128
 	maxPlotAlt     = 2048
 	maxPlotID      = 128
 )
@@ -257,14 +264,16 @@ func ValidateChartAnnotation(v any) string {
 	if k, ok := asString(key); !ok || trim(k) == "" || jsLength(k) > maxKeyLength {
 		return fmt.Sprintf("annotation.key must be a non-empty string of at most %d characters.", maxKeyLength)
 	}
-	if kind, _ := get(v, "kind"); kind != "level" && kind != "zone" && kind != "marker" {
-		return `annotation.kind must be "level", "zone" or "marker".`
-	}
 	kind, _ := get(v, "kind")
+	kindName, kindOK := kind.(string)
+	needed, known := annotationAnchors[kindName]
+	if !kindOK || !known {
+		return `annotation.kind must be "level", "zone", "marker", "trend", "ray", "fibonacci" or "plan".`
+	}
 	anchorsValue, _ := get(v, "anchors")
 	anchors, ok := anchorsValue.([]any)
 	if !ok || len(anchors) == 0 || len(anchors) > maxAnchors {
-		return "annotation.anchors must hold one or two anchors."
+		return "annotation.anchors must hold one to three anchors."
 	}
 	priced := make([]bool, len(anchors))
 	for i, a := range anchors {
@@ -282,12 +291,49 @@ func ValidateChartAnnotation(v any) string {
 		allPriced = allPriced && p
 	}
 	switch {
-	case kind == "level" && (len(anchors) != 1 || !priced[0]):
+	case kindName == "level" && (len(anchors) != 1 || !priced[0]):
 		return "a level needs exactly one anchor with a price."
-	case kind == "zone" && (len(anchors) != 2 || !allPriced):
+	case kindName == "zone" && (len(anchors) != 2 || !allPriced):
 		return "a zone needs two anchors, both with a price."
-	case kind == "marker" && len(anchors) != 1:
+	case kindName == "marker" && len(anchors) != 1:
 		return "a marker needs exactly one anchor."
+	case kindName != "level" && kindName != "zone" && kindName != "marker" && (len(anchors) != needed || !allPriced):
+		return fmt.Sprintf("a %s needs %d anchors, all with a price.", kindName, needed)
+	}
+	if params, present := get(v, "params"); present {
+		if kindName == "level" || kindName == "zone" || kindName == "marker" {
+			return "annotation.params applies only to trend, ray, fibonacci and plan."
+		}
+		entries, isMap := params.(map[string]any)
+		if !isMap {
+			return "annotation.params must be an object."
+		}
+		if len(entries) > maxParams {
+			return fmt.Sprintf("annotation.params may hold at most %d entries.", maxParams)
+		}
+		names := make([]string, 0, len(entries))
+		for name := range entries {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			if !paramNameRe.MatchString(name) {
+				return "annotation.params keys must be 1 to 32 letters, digits, dash or underscore, starting with a letter."
+			}
+			value := entries[name]
+			valid := false
+			switch x := value.(type) {
+			case float64:
+				valid = finite(x)
+			case string:
+				valid = jsLength(x) <= maxParamString
+			case bool:
+				valid = true
+			}
+			if !valid {
+				return fmt.Sprintf("annotation.params.%s must be a finite number, a boolean or a string of at most %d characters.", name, maxParamString)
+			}
+		}
 	}
 	if text, present := get(v, "text"); present {
 		if s, ok := asString(text); !ok || jsLength(s) > maxTextLength {
