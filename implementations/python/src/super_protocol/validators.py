@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Plugin manifest, editor card and chart card validators.
+"""Plugin manifest, editor, chart and plot card validators.
 
 Ported from the TypeScript reference in implementations/typescript/; every message and every ordering of
 checks matches it, and conformance/protocol.v1.json pins that. Inputs are decoded JSON.
@@ -21,6 +21,9 @@ CHART_TYPES = ("candles", "hollow-candles", "ohlc", "line", "area", "baseline", 
 CHART_LIMITS = {"bars": 20000, "annotations": 256, "indicators": 12, "anchors": 2, "textLength": 2048, "keyLength": 128}
 CHART_HEIGHT = (160, 1200)
 PLOT_LIMITS = {"alt": 2048, "idLength": 128}  # the height range is CHART_HEIGHT, as for a chart card
+# What the user sees in place of a plot that cannot be drawn, followed by the card's alt. The technical reason
+# goes to the developer log (and may go back to the model), never to the user.
+PLOT_FALLBACK_MESSAGE = "This chart can't be shown here."
 SURFACES = ("card", "panel", "tool", "canvas")
 
 
@@ -318,7 +321,10 @@ _PLOT_EXPECTED = 'spec: { ...a plot spec }, alt: "one sentence saying what the p
 
 
 def validate_plot_card_spec(spec: Any) -> CardResult:
-    """Checks a `super.plot` card. The inner `spec` is opaque: the renderer validates it."""
+    """Checks the envelope of a `super.plot` card; the inner `spec` is opaque and checked by the plugin that draws it.
+
+    The errors are for the model and the developer log, not for the user.
+    """
     if not js.is_object(spec):
         return _fail("Plot card spec must be an object.")
     if get(spec, "kind") != PLOT_CARD_KIND:

@@ -3,6 +3,7 @@ import {
   CHART_CARD_KIND,
   EDITOR_CARD_KIND,
   PLOT_CARD_KIND,
+  PLOT_FALLBACK_MESSAGE,
   PLOT_LIMITS,
   plotCardKind,
   validatePlotCardSpec,
@@ -251,5 +252,9 @@ describe("plot", () => {
   it("describes itself to a model", () => {
     expect(plotCardKind.kind).toBe(PLOT_CARD_KIND);
     expect(plotCardKind.schema.required).toEqual(["kind", "spec", "alt"]);
+  });
+  it("gives the user a plain fallback with no internals in it", () => {
+    expect(PLOT_FALLBACK_MESSAGE).toBe("This chart can't be shown here.");
+    expect(PLOT_FALLBACK_MESSAGE).not.toMatch(/super\.plot|spec|render|mount|json|error/i);
   });
 });

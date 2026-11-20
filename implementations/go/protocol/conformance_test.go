@@ -29,7 +29,8 @@ type fixtures struct {
 		Value  any        `json:"value"`
 		Expect CardResult `json:"expect"`
 	} `json:"plot_card"`
-	TerminalEvent []struct {
+	PlotFallbackMessage string `json:"plot_fallback_message"`
+	TerminalEvent       []struct {
 		Type   string `json:"type"`
 		Expect bool   `json:"expect"`
 	} `json:"terminal_event"`
@@ -104,6 +105,12 @@ func TestPlotCard(t *testing.T) {
 		if got := ValidatePlotCardSpec(c.Value); got != c.Expect {
 			t.Errorf("plot[%d]: %v, want %v", i, got, c.Expect)
 		}
+	}
+}
+
+func TestPlotFallbackMessage(t *testing.T) {
+	if want := load(t).PlotFallbackMessage; PlotFallbackMessage != want {
+		t.Errorf("PlotFallbackMessage = %q, want %q", PlotFallbackMessage, want)
 	}
 }
 

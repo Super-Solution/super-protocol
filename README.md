@@ -21,9 +21,9 @@ licenses**. This repository is that neutral ground:
   how a host mounts it, framework-neutral.
 - **Inference gateway and stream events**: the request, usage and stream-event types plus an
   incremental SSE parser.
-- **Card contracts**: the `super-editor.document`, `super-chart.chart` and generic `super.plot` card
-  kinds, the chart annotation spec and the market-data `Datafeed` contract. `super.plot` is an
-  envelope `{ spec, alt }` around a plot spec the protocol does not interpret (see below).
+- **Card contracts**: the `super-editor.document`, `super-chart.chart` and `super.plot` card kinds,
+  the chart annotation spec and the market-data `Datafeed` contract. `super.plot` lets a host show a
+  chart from any plotting library without knowing which one (see below).
 
 Because everything here is Apache-2.0, an Apache host and a GPL/AGPL or commercial plugin can both
 import it. Closed-source implementations (for example a Rust one) can follow the same conformance
@@ -36,13 +36,32 @@ test `implementations/typescript/src/boundary.test.ts` fails if that changes.
 
 ## The `super.plot` card
 
-`{ kind: "super.plot", spec, alt, id?, title?, height? }`. `spec` is any plot spec object and is passed
-to the renderer as is; the protocol checks only the envelope. `alt` (required, at most 2,048
-characters) says what the plot shows, for screen readers, for transcripts that cannot draw it and
-for the model that reads the history. `super.plot` names no renderer: any plugin can implement it
-(Super Plot does), and adding a plot type never changes this protocol. A renderer that only knows
-some spec versions rejects the rest when it mounts, with its own message. `super-chart.chart`
-stays as it is: market data with a datafeed has a fixed shape worth validating here.
+Put a bar, line, scatter or other chart in a chat reply, drawn by whichever plugin the host has
+installed (Super Plot or your own). New plot types ship in the plugin; the protocol and the host stay
+as they are.
+
+```ts
+{ kind: "super.plot", spec, alt, id?, title?, height? }
+```
+
+- `spec`: the plot itself (data, chart type, encodings), passed to the plugin unchanged. The protocol
+  checks only the fields around it.
+- `alt` (required, at most 2,048 characters): a sentence or two in plain words saying what the plot
+  shows. Screen readers read it, transcripts that cannot draw the plot keep it, and the model reads it
+  in the history.
+- `title`: shown above the plot, in the user's words ("Revenue by region", not
+  "revenue_by_region"). With no title, the card has no heading.
+- `id` lets a later tool call address the plot; `height` is 160 to 1,200 CSS pixels.
+
+When the plot can't be drawn (a plot type or spec version the plugin doesn't know, bad data, a mount
+that throws), the user sees `PLOT_FALLBACK_MESSAGE`, "This chart can't be shown here.", followed by the
+card's `alt`. The technical reason goes to the developer log, and the host may return it to the model
+so it can send a corrected card. Validation errors (`error`, `expected`) follow the same split: they
+are written for the model and the log. The user never sees card kinds, field paths, library names or
+JSON.
+
+For market data from a datafeed (candles, indicators, annotations), use `super-chart.chart`, whose
+fixed shape this protocol validates in full.
 
 ## Conformance
 

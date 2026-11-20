@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from super_protocol import (
+    PLOT_FALLBACK_MESSAGE,
     SSEParser,
     StreamFrameTooLarge,
     is_terminal_event,
@@ -50,6 +51,9 @@ class Conformance(unittest.TestCase):
 
     def test_plot_card(self) -> None:
         self.check("plot_card", lambda c: validate_plot_card_spec(c["value"]), 60)
+
+    def test_plot_fallback_message(self) -> None:
+        self.assertEqual(PLOT_FALLBACK_MESSAGE, DATA["plot_fallback_message"])
 
     def test_terminal_event(self) -> None:
         self.check("terminal_event", lambda c: is_terminal_event(c["type"]), 8)
