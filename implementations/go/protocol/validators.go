@@ -17,6 +17,7 @@ const (
 	PluginManifestVersion = 0
 	EditorCardKind        = "super-editor.document"
 	ChartCardKind         = "super-chart.chart"
+	PlotCardKind          = "super.plot"
 )
 
 var (
@@ -39,6 +40,8 @@ const (
 	maxKeyLength   = 128
 	minHeight      = 160
 	maxHeight      = 1200
+	maxPlotAlt     = 2048
+	maxPlotID      = 128
 )
 
 // ManifestIssue is one problem found in a plugin manifest.
@@ -410,6 +413,47 @@ func ValidateChartCardSpec(spec any) CardResult {
 		if bad := ValidateChartAnnotations(annotations); bad != "" {
 			return fail(bad)
 		}
+	}
+	return CardResult{OK: true}
+}
+
+const plotExpected = `spec: { ...a plot spec }, alt: "one sentence saying what the plot shows"`
+
+// ValidatePlotCardSpec checks the spec of a `super.plot` card. The inner `spec` is opaque: the renderer validates it.
+func ValidatePlotCardSpec(spec any) CardResult {
+	if !isObject(spec) {
+		return fail("Plot card spec must be an object.")
+	}
+	if kind, _ := get(spec, "kind"); kind != PlotCardKind {
+		return fail(fmt.Sprintf("kind must be %q.", PlotCardKind))
+	}
+	if id, present := get(spec, "id"); present {
+		if s, ok := asString(id); !ok || trim(s) == "" || jsLength(s) > maxPlotID {
+			return fail("id must be a non-empty string.")
+		}
+	}
+	if title, present := get(spec, "title"); present && !isString(title) {
+		return fail("title must be a string.")
+	}
+	if h, present := get(spec, "height"); present && !(finite(h) && h.(float64) >= minHeight && h.(float64) <= maxHeight) {
+		return fail(fmt.Sprintf("height must be %d..%d pixels.", minHeight, maxHeight))
+	}
+	if inner, present := get(spec, "spec"); !isObject(inner) {
+		if !present {
+			return failExpected("spec must be an object: the plot spec.", plotExpected)
+		}
+		return fail("spec must be an object: the plot spec.")
+	}
+	alt, present := get(spec, "alt")
+	s, ok := asString(alt)
+	if !ok || trim(s) == "" {
+		if !present {
+			return failExpected("alt must be a non-empty string saying what the plot shows.", plotExpected)
+		}
+		return fail("alt must be a non-empty string saying what the plot shows.")
+	}
+	if jsLength(s) > maxPlotAlt {
+		return fail(fmt.Sprintf("alt must be at most %d characters.", maxPlotAlt))
 	}
 	return CardResult{OK: true}
 }

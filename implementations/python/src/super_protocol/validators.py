@@ -16,9 +16,11 @@ from ._js import UNDEFINED, get
 PLUGIN_MANIFEST_VERSION = 0
 EDITOR_CARD_KIND = "super-editor.document"
 CHART_CARD_KIND = "super-chart.chart"
+PLOT_CARD_KIND = "super.plot"
 CHART_TYPES = ("candles", "hollow-candles", "ohlc", "line", "area", "baseline", "heikin-ashi")
 CHART_LIMITS = {"bars": 20000, "annotations": 256, "indicators": 12, "anchors": 2, "textLength": 2048, "keyLength": 128}
 CHART_HEIGHT = (160, 1200)
+PLOT_LIMITS = {"alt": 2048, "idLength": 128}  # the height range is CHART_HEIGHT, as for a chart card
 SURFACES = ("card", "panel", "tool", "canvas")
 
 
@@ -309,6 +311,39 @@ def validate_chart_card_spec(spec: Any) -> CardResult:
         bad = validate_chart_annotations(annotations)
         if bad:
             return _fail(bad)
+    return _OK
+
+
+_PLOT_EXPECTED = 'spec: { ...a plot spec }, alt: "one sentence saying what the plot shows"'
+
+
+def validate_plot_card_spec(spec: Any) -> CardResult:
+    """Checks a `super.plot` card. The inner `spec` is opaque: the renderer validates it."""
+    if not js.is_object(spec):
+        return _fail("Plot card spec must be an object.")
+    if get(spec, "kind") != PLOT_CARD_KIND:
+        return _fail(f'kind must be "{PLOT_CARD_KIND}".')
+    spec_id, title = get(spec, "id"), get(spec, "title")
+    if spec_id is not UNDEFINED and (
+        not js.is_string(spec_id) or js.trim(spec_id) == "" or js.js_length(spec_id) > PLOT_LIMITS["idLength"]
+    ):
+        return _fail("id must be a non-empty string.")
+    if title is not UNDEFINED and not js.is_string(title):
+        return _fail("title must be a string.")
+    height = get(spec, "height")
+    low, high = CHART_HEIGHT
+    if height is not UNDEFINED and not (js.finite(height) and low <= height <= high):
+        return _fail(f"height must be {low}..{high} pixels.")
+    inner = get(spec, "spec")
+    if not js.is_object(inner):
+        return _fail("spec must be an object: the plot spec.", _PLOT_EXPECTED if inner is UNDEFINED else None)
+    alt = get(spec, "alt")
+    if not js.is_string(alt) or js.trim(alt) == "":
+        return _fail(
+            "alt must be a non-empty string saying what the plot shows.", _PLOT_EXPECTED if alt is UNDEFINED else None
+        )
+    if js.js_length(alt) > PLOT_LIMITS["alt"]:
+        return _fail(f"alt must be at most {PLOT_LIMITS['alt']} characters.")
     return _OK
 
 

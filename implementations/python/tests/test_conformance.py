@@ -12,6 +12,7 @@ from super_protocol import (
     is_terminal_event,
     validate_chart_card_spec,
     validate_editor_card_spec,
+    validate_plot_card_spec,
     validate_plugin_manifest,
 )
 
@@ -46,6 +47,9 @@ class Conformance(unittest.TestCase):
 
     def test_chart_card(self) -> None:
         self.check("chart_card", lambda c: validate_chart_card_spec(c["value"]), 200)
+
+    def test_plot_card(self) -> None:
+        self.check("plot_card", lambda c: validate_plot_card_spec(c["value"]), 60)
 
     def test_terminal_event(self) -> None:
         self.check("terminal_event", lambda c: is_terminal_event(c["type"]), 8)

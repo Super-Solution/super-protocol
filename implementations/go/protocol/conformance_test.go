@@ -25,6 +25,10 @@ type fixtures struct {
 		Value  any        `json:"value"`
 		Expect CardResult `json:"expect"`
 	} `json:"chart_card"`
+	PlotCard []struct {
+		Value  any        `json:"value"`
+		Expect CardResult `json:"expect"`
+	} `json:"plot_card"`
 	TerminalEvent []struct {
 		Type   string `json:"type"`
 		Expect bool   `json:"expect"`
@@ -87,6 +91,18 @@ func TestChartCard(t *testing.T) {
 	for i, c := range f.ChartCard {
 		if got := ValidateChartCardSpec(c.Value); got != c.Expect {
 			t.Errorf("chart[%d]: %v, want %v", i, got, c.Expect)
+		}
+	}
+}
+
+func TestPlotCard(t *testing.T) {
+	f := load(t)
+	if len(f.PlotCard) < 60 {
+		t.Fatalf("only %d cases", len(f.PlotCard))
+	}
+	for i, c := range f.PlotCard {
+		if got := ValidatePlotCardSpec(c.Value); got != c.Expect {
+			t.Errorf("plot[%d]: %v, want %v", i, got, c.Expect)
 		}
 	}
 }

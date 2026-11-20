@@ -9,6 +9,7 @@ import {
   parseSSE,
   validateChartCardSpec,
   validateEditorCardSpec,
+  validatePlotCardSpec,
   validatePluginManifest,
 } from "./index.js";
 
@@ -25,6 +26,10 @@ describe("conformance data", () => {
   it("chart card", () => {
     expect(data.chart_card.length).toBeGreaterThanOrEqual(200);
     for (const c of data.chart_card) expect(validateChartCardSpec(c.value)).toEqual(c.expect);
+  });
+  it("plot card", () => {
+    expect(data.plot_card.length).toBeGreaterThanOrEqual(60);
+    for (const c of data.plot_card) expect(validatePlotCardSpec(c.value)).toEqual(c.expect);
   });
   it("terminal events", () => {
     for (const c of data.terminal_event) expect(isTerminalEvent({ type: c.type } as never)).toBe(c.expect);

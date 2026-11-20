@@ -21,8 +21,9 @@ licenses**. This repository is that neutral ground:
   how a host mounts it, framework-neutral.
 - **Inference gateway and stream events**: the request, usage and stream-event types plus an
   incremental SSE parser.
-- **Card contracts**: the `super-editor.document` and `super-chart.chart` card kinds, the chart
-  annotation spec and the market-data `Datafeed` contract.
+- **Card contracts**: the `super-editor.document`, `super-chart.chart` and generic `super.plot` card
+  kinds, the chart annotation spec and the market-data `Datafeed` contract. `super.plot` is an
+  envelope `{ spec, alt }` around a plot spec the protocol does not interpret (see below).
 
 Because everything here is Apache-2.0, an Apache host and a GPL/AGPL or commercial plugin can both
 import it. Closed-source implementations (for example a Rust one) can follow the same conformance
@@ -33,9 +34,19 @@ data without sharing code.
 This package never imports from a GPL/AGPL package and has no runtime dependencies. The TypeScript
 test `implementations/typescript/src/boundary.test.ts` fails if that changes.
 
+## The `super.plot` card
+
+`{ kind: "super.plot", spec, alt, id?, title?, height? }`. `spec` is any plot spec object and is passed
+to the renderer as is; the protocol checks only the envelope. `alt` (required, at most 2,048
+characters) says what the plot shows, for screen readers, for transcripts that cannot draw it and
+for the model that reads the history. `super.plot` names no renderer: any plugin can implement it
+(Super Plot does), and adding a plot type never changes this protocol. A renderer that only knows
+some spec versions rejects the rest when it mounts, with its own message. `super-chart.chart`
+stays as it is: market data with a datafeed has a fixed shape worth validating here.
+
 ## Conformance
 
-`conformance/protocol.v1.json` holds roughly 750 cases (plugin manifests, editor and chart cards,
+`conformance/protocol.v1.json` holds roughly 800 cases (plugin manifests, editor, chart and plot cards,
 terminal events, SSE byte streams). The TypeScript package produces them; Go and Python must
 reproduce every case exactly, error messages included. See
 [`conformance/README.md`](conformance/README.md). If behaviour changes on purpose, regenerate, review

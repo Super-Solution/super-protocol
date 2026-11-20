@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   CHART_CARD_KIND,
   EDITOR_CARD_KIND,
+  PLOT_CARD_KIND,
+  PLOT_LIMITS,
+  plotCardKind,
+  validatePlotCardSpec,
   chartCardKind,
   validateChartAnnotations,
   validateChartCardSpec,
@@ -216,5 +220,36 @@ describe("inference request shapes", () => {
       { type: "request.completed", request_id: "r", sequence: 4, execution_status: "succeeded", billing_status: "settled", finish_reason: "tool_calls" },
     ];
     expect(await collectText((async function* () { yield* events; })())).toBe("hi");
+  });
+});
+
+describe("plot", () => {
+  const base = { kind: PLOT_CARD_KIND, spec: { type: "bar", data: [{ a: 1 }] }, alt: "One bar of height 1." };
+  it("wraps any plot spec without reading it", () => {
+    expect(validatePlotCardSpec(base).ok).toBe(true);
+    expect(validatePlotCardSpec({ ...base, spec: {} }).ok).toBe(true);
+    expect(validatePlotCardSpec({ ...base, spec: { a_future_chart: { nobody: "knows" } } }).ok).toBe(true);
+    expect(plotCardKind.validate({ ...base, id: "p1", title: "T", height: 300 }).ok).toBe(true);
+  });
+  it("requires a spec object and a non-empty alt, and tells the model what to send", () => {
+    const noSpec = validatePlotCardSpec({ kind: PLOT_CARD_KIND, alt: "x" });
+    expect(noSpec).toMatchObject({ ok: false, expected: expect.stringContaining("spec") });
+    expect(validatePlotCardSpec({ ...base, spec: [] }).ok).toBe(false);
+    expect(validatePlotCardSpec({ ...base, spec: null }).ok).toBe(false);
+    expect(validatePlotCardSpec({ kind: PLOT_CARD_KIND, spec: {} })).toMatchObject({ ok: false, expected: expect.stringContaining("alt") });
+    expect(validatePlotCardSpec({ ...base, alt: "   " }).ok).toBe(false);
+    expect(validatePlotCardSpec({ ...base, alt: "a".repeat(PLOT_LIMITS.alt + 1) }).ok).toBe(false);
+    expect(validatePlotCardSpec({ ...base, alt: "a".repeat(PLOT_LIMITS.alt) }).ok).toBe(true);
+  });
+  it("checks the envelope fields and the kind", () => {
+    expect(validatePlotCardSpec({ ...base, kind: CHART_CARD_KIND }).ok).toBe(false);
+    expect(validatePlotCardSpec({ ...base, id: "" }).ok).toBe(false);
+    expect(validatePlotCardSpec({ ...base, height: 10 }).ok).toBe(false);
+    expect(validatePlotCardSpec({ ...base, title: 3 }).ok).toBe(false);
+    expect(validatePlotCardSpec(null).ok).toBe(false);
+  });
+  it("describes itself to a model", () => {
+    expect(plotCardKind.kind).toBe(PLOT_CARD_KIND);
+    expect(plotCardKind.schema.required).toEqual(["kind", "spec", "alt"]);
   });
 });
