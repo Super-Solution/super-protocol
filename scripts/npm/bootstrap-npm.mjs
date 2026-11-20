@@ -7,7 +7,7 @@
 //   node bootstrap-npm.mjs trust <repo>          add the GitHub Actions trusted publisher to each package
 //                                                of that repo (npm >= 11.15, account 2FA on)
 //
-// repo = super-protocol | super-chat | super-router | super-editor | super-chart
+// repo = super-protocol | super-chat | super-router | super-editor | super-chart | super-plot
 // Env: OWNER (default Super-Solution), DRY_RUN=1 (npm --dry-run; PowerShell: $env:DRY_RUN=1)
 // Run `npm login` first. It publishes only placeholders and never touches existing versions.
 import { spawnSync } from "node:child_process";
@@ -52,7 +52,11 @@ const TABLE = [
   ["super-chart", "npm-publish.yml", "@supersolutions/super-chart-core", "GPL-3.0-or-later"],
   ["super-chart", "npm-publish.yml", "@supersolutions/super-chart-superscript", "GPL-3.0-or-later"],
   ["super-chart", "npm-publish.yml", "@supersolutions/super-chart-web", "GPL-3.0-or-later"],
-  ["super-chart", "npm-publish.yml", "@supersolutions/super-chart-chat-plugin", "GPL-3.0-or-later"]
+  ["super-chart", "npm-publish.yml", "@supersolutions/super-chart-chat-plugin", "GPL-3.0-or-later"],
+  ["super-plot", "npm-publish.yml", "@supersolutions/super-plot-core", "Apache-2.0"],
+  ["super-plot", "npm-publish.yml", "@supersolutions/super-plot-web", "Apache-2.0"],
+  ["super-plot", "npm-publish.yml", "@supersolutions/super-plot-react", "Apache-2.0"],
+  ["super-plot", "npm-publish.yml", "@supersolutions/super-plot-chat-plugin", "Apache-2.0"]
 ];
 
 const [mode, want = ""] = process.argv.slice(2);
