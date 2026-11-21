@@ -6,14 +6,18 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   formatCardRef,
+  isRunEventType,
+  isRunTerminalEvent,
   isTerminalEvent,
   parseCardRef,
   parseChartRef,
   parseSSE,
+  runStreamOutcome,
   validateChartCardSpec,
   validateEditorCardSpec,
   validatePlotCardSpec,
   validatePluginManifest,
+  validateRunEvent,
   PLOT_FALLBACK_MESSAGE,
 } from "./index.js";
 
@@ -46,6 +50,14 @@ describe("conformance data", () => {
   });
   it("terminal events", () => {
     for (const c of data.terminal_event) expect(isTerminalEvent({ type: c.type } as never)).toBe(c.expect);
+  });
+  it("run events", () => {
+    expect(data.run_event.length).toBeGreaterThanOrEqual(1000);
+    for (const c of data.run_event) expect(validateRunEvent(c.value)).toEqual(c.expect);
+    expect(data.run_event_type.length).toBeGreaterThanOrEqual(25);
+    for (const c of data.run_event_type) expect({ known: isRunEventType(c.type), terminal: isRunTerminalEvent({ type: c.type }) }).toEqual(c.expect);
+    expect(data.run_stream_outcome.length).toBeGreaterThanOrEqual(30);
+    for (const c of data.run_stream_outcome) expect(runStreamOutcome(c.events)).toBe(c.expect);
   });
   it("sse", async () => {
     expect(data.sse.length).toBeGreaterThanOrEqual(300);

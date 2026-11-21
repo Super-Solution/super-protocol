@@ -21,6 +21,9 @@ licenses**. This repository is that neutral ground:
   how a host mounts it, framework-neutral.
 - **Inference gateway and stream events**: the request, usage and stream-event types plus an
   incremental SSE parser.
+- **Run events**: what an agent turn reports while it runs (text, tool calls, cards that wait for the person, usage,
+  the end), the same whether the loop runs in the page or on a server in any language, and what a stream that
+  stopped means for its run (see [`docs/RUN-EVENTS.md`](docs/RUN-EVENTS.md)).
 - **Card references**: the `ref:` link that lets text in a message point into a card, and the `ref()` method a card
   answers it with (see [`docs/CARD-REFS.md`](docs/CARD-REFS.md)).
 - **Card contracts**: the `super-editor.document`, `super-chart.chart` and `super.plot` card kinds,
@@ -67,8 +70,8 @@ fixed shape this protocol validates in full.
 
 ## Conformance
 
-`conformance/protocol.v1.json` holds roughly 800 cases (plugin manifests, editor, chart and plot cards,
-terminal events, SSE byte streams). The TypeScript package produces them; Go and Python must
+`conformance/protocol.v1.json` holds roughly 2,200 cases (plugin manifests, editor, chart and plot cards,
+card references, terminal events, run events, SSE byte streams). The TypeScript package produces them; Go and Python must
 reproduce every case exactly, error messages included. See
 [`conformance/README.md`](conformance/README.md). If behaviour changes on purpose, regenerate, review
 the diff and update every port.

@@ -6,7 +6,7 @@ cases exactly, error messages included.
 
 | File | What it pins |
 | --- | --- |
-| `protocol.v1.json` | `plugin_manifest` (issue lists), `editor_card`, `chart_card` and `plot_card` (result objects), `terminal_event`, `sse` (hex-encoded byte chunks, optional frame limit, expected frames or the error code), and `plot_fallback_message` (the text a user sees in place of a plot that cannot be drawn) |
+| `protocol.v1.json` | `plugin_manifest` (issue lists), `editor_card`, `chart_card` and `plot_card` (result objects), `terminal_event`, `run_event` (issue lists), `run_event_type` (whether a type is known and whether it ends a run), `run_stream_outcome` (what a stopped stream says about its run), `sse` (hex-encoded byte chunks, optional frame limit, expected frames or the error code), and `plot_fallback_message` (the text a user sees in place of a plot that cannot be drawn) |
 
 Known limits of the data: URLs are realistic base URLs (no percent-encoded or internationalised
 hosts), strings are valid UTF-8 (a multi-byte character may be split across SSE chunks), and string

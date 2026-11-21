@@ -2,6 +2,19 @@
 """Python port of the Super Solution protocol validators and SSE parser."""
 
 from .ref import CARD_REF_LIMITS, CARD_REF_SCHEME, CardRef, format_card_ref, parse_card_ref, parse_chart_ref
+from .run import (
+    RUN_CARD_ACTION_TYPES,
+    RUN_EVENT_TYPES,
+    RUN_FINISH_REASONS,
+    RUN_JOB_STATUSES,
+    RUN_MODES,
+    RunEventIssue,
+    RunStreamOutcome,
+    is_run_event_type,
+    is_run_terminal_event,
+    run_stream_outcome,
+    validate_run_event,
+)
 from .sse import DEFAULT_MAX_FRAME_BYTES, Frame, SSEParser, StreamFrameTooLarge
 from .validators import (
     CHART_CARD_KIND,
@@ -42,12 +55,22 @@ __all__ = [
     "PLOT_FALLBACK_MESSAGE",
     "PLOT_LIMITS",
     "PLUGIN_MANIFEST_VERSION",
+    "RUN_CARD_ACTION_TYPES",
+    "RUN_EVENT_TYPES",
+    "RUN_FINISH_REASONS",
+    "RUN_JOB_STATUSES",
+    "RUN_MODES",
     "CardResult",
     "Frame",
     "ManifestIssue",
+    "RunEventIssue",
+    "RunStreamOutcome",
     "SSEParser",
     "StreamFrameTooLarge",
+    "is_run_event_type",
+    "is_run_terminal_event",
     "is_terminal_event",
+    "run_stream_outcome",
     "validate_chart_annotation",
     "validate_chart_annotations",
     "validate_chart_card_spec",
@@ -56,5 +79,6 @@ __all__ = [
     "validate_period",
     "validate_plot_card_spec",
     "validate_plugin_manifest",
+    "validate_run_event",
     "validate_symbol",
 ]
