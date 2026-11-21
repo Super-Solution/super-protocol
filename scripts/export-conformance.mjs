@@ -1,20 +1,24 @@
 // Writes conformance/protocol.v1.json: language-neutral cases generated from the TypeScript
 // reference in implementations/typescript/ (plugin manifest, editor, chart and plot card specs, SSE parser,
-// terminal-event check). Go and Python must reproduce every case exactly.
+// terminal-event check, run events). Go and Python must reproduce every case exactly.
 //
 // Run `pnpm build` first: the generator imports the built
 // package. implementations/typescript/src/conformance.test.ts fails if the file drifts from the reference.
 import { writeFileSync } from "node:fs";
 import {
   formatCardRef,
+  isRunEventType,
+  isRunTerminalEvent,
   isTerminalEvent,
   parseCardRef,
   parseChartRef,
   parseSSE,
+  runStreamOutcome,
   validateChartCardSpec,
   validateEditorCardSpec,
   validatePlotCardSpec,
   validatePluginManifest,
+  validateRunEvent,
   PLOT_FALLBACK_MESSAGE,
 } from "../implementations/typescript/dist/index.js";
 
@@ -504,6 +508,152 @@ const terminalCases = [
   "x",
 ].map((type) => ({ type, expect: isTerminalEvent({ type }) }));
 
+// ---- run events ------------------------------------------------------------------------------
+const runUsage = { inputTokens: 1200, outputTokens: 80, totalTokens: 1280, cachedInputTokens: 900, reasoningTokens: 0 };
+const runAction = { cardId: "card_1", callId: "call_1", kind: "confirm", type: "confirm", value: { note: "ok" }, at: 1767225600000 };
+const runCard = { id: "card_1", spec: { kind: "confirm", title: "Send the email?" }, callId: "call_1" };
+const runParts = [{ type: "text", text: "Here is the plan." }];
+const runHandle = { provider: "openai", id: "resp_1", model: "m", createdAt: 1767225600000 };
+/** One valid event of every type; every other case is one of these with one thing changed. */
+const runEvents = [
+  { type: "run-start", runId: "run_1", mode: "stream" },
+  { type: "run-snapshot", parts: runParts, cards: [{ ...runCard, action: runAction, expired: false }], usage: runUsage, steps: 2 },
+  { type: "context-built", trace: { layers: [] }, system: "You are helpful.", toolNames: ["search", "send_email"] },
+  { type: "step-start", step: 0 },
+  { type: "text-delta", delta: "Hel" },
+  { type: "reasoning-delta", delta: "" },
+  { type: "tool-call-input-delta", callId: "call_1", name: "search", partialInput: { query: "x" }, partialCard: { kind: "table" }, loading: { kind: "table", label: "Searching" } },
+  { type: "tool-call", callId: "call_1", name: "search", input: { query: "x" }, repaired: true, loading: { kind: "generic", label: "Searching" } },
+  { type: "awaiting-user", callId: "call_1", card: runCard },
+  { type: "user-responded", callId: "call_1", action: runAction },
+  { type: "tool-result", callId: "call_1", name: "search", output: { hits: 3 }, failure: "timeout", ms: 412.5 },
+  { type: "card", card: runCard },
+  { type: "card-updated", cardId: "card_1", spec: { kind: "progress", value: 0.5 } },
+  { type: "step-finish", step: 1, finishReason: "tool-calls", usage: runUsage },
+  { type: "job-started", handle: runHandle },
+  { type: "job-status", handle: runHandle, status: "in_progress" },
+  { type: "message", parts: runParts },
+  { type: "metering", record: { id: "run_1:0", scope: "step" } },
+  { type: "usage", usage: runUsage },
+  { type: "run-finish", runId: "run_1", finishReason: "stop", usage: runUsage, steps: 2 },
+  { type: "error", error: { message: "The model did not answer." }, recoverable: false },
+];
+const runJunk = [null, true, -1, 1.5, "", "x", [], {}];
+/** Fields the protocol does not look inside: changed as a whole, never field by field. */
+const runOpaque = ["input", "partialInput", "output", "error", "trace", "record", "value", "loading", "text"];
+/** Every place inside an event a check looks at, as a path of keys and indexes. */
+const runPaths = (value, path = []) => {
+  if (value === null || typeof value !== "object" || runOpaque.includes(path[path.length - 1])) return [path];
+  const keys = Array.isArray(value) ? value.map((_, i) => i) : Object.keys(value);
+  return [path, ...keys.flatMap((k) => runPaths(value[k], [...path, k]))];
+};
+const runAt = (root, path) => path.slice(0, -1).reduce((v, k) => v[k], root);
+const runOptional = { "run-snapshot": ["usage", "steps"], "tool-call-input-delta": ["partialCard", "loading"], "tool-call": ["repaired", "loading"], "tool-result": ["failure"], "step-finish": ["usage"] };
+const runEventValues = [...runEvents];
+for (const base of runEvents) {
+  // The least a valid event may carry: every optional field left out.
+  if (runOptional[base.type]) runEventValues.push(mut(base, (e) => runOptional[base.type].forEach((k) => delete e[k])));
+  for (const path of runPaths(base).filter((p) => p.length > 0 && p.join(".") !== "type")) {
+    const key = path[path.length - 1];
+    if (typeof key === "string") runEventValues.push(mut(base, (e) => delete runAt(e, path)[key]));
+    for (const junk of runJunk) runEventValues.push(mut(base, (e) => (runAt(e, path)[key] = junk)));
+  }
+}
+for (const mode of ["stream", "sync", "background", "Stream", "batch"]) runEventValues.push({ type: "run-start", runId: "r", mode });
+for (const finishReason of ["stop", "length", "tool-calls", "content-filter", "cancelled", "error", "unknown", "tool_calls", "done"])
+  runEventValues.push({ type: "run-finish", runId: "r", finishReason, usage: {}, steps: 0 });
+for (const status of ["queued", "in_progress", "completed", "failed", "cancelled", "incomplete", "running"])
+  runEventValues.push({ type: "job-status", handle: { provider: "p", id: "j" }, status });
+for (const type of ["submit", "select", "confirm", "cancel", "dismiss", "approve"])
+  runEventValues.push({ type: "user-responded", callId: "c", action: { cardId: "k", kind: "confirm", type, at: 0 } });
+runEventValues.push(
+  null,
+  [],
+  "run-start",
+  42,
+  true,
+  {},
+  { type: null },
+  { type: 7 },
+  { type: "" },
+  { type: "resync" },
+  { type: "done" },
+  { type: "Run-Start", runId: "r", mode: "stream" },
+  { type: "request.completed" },
+  [{ type: "run-start", runId: "r", mode: "stream" }],
+  { type: "run-snapshot", parts: [], cards: [] },
+  { type: "run-snapshot", parts: [{ type: "text" }, null, { type: 1 }, [], "x"], cards: [null, { id: "", spec: null }, { id: "c", spec: { kind: "k" }, action: { at: -1 } }] },
+  { type: "context-built", trace: {}, system: "", toolNames: [] },
+  { type: "context-built", trace: [], system: null, toolNames: ["a", 1, null, ""] },
+  { type: "usage", usage: { inputTokens: 0.5, outputTokens: -1, totalTokens: "3", cachedInputTokens: null, reasoningTokens: true, other: "ignored" } },
+  { type: "tool-result", callId: "c", name: "n", ms: 0 },
+  { type: "tool-result", callId: "c", name: "n", ms: -0.001 },
+  { type: "error", recoverable: true },
+  { type: "error", error: "boom", recoverable: "no" },
+  { type: "text-delta", delta: "x", extra: { kept: true } },
+);
+const runEventSeen = new Set();
+const runEventCases = runEventValues
+  .filter((value) => {
+    const key = JSON.stringify(value);
+    return !runEventSeen.has(key) && runEventSeen.add(key);
+  })
+  .map((value) => ({ value, expect: validateRunEvent(clone(value)) }));
+
+const runEventTypeCases = [
+  ...runEvents.map((e) => e.type),
+  "run-end",
+  "resync",
+  "done",
+  "Run-Finish",
+  "run-finish ",
+  "request.completed",
+  "",
+].map((type) => ({ type, expect: { known: isRunEventType(type), terminal: isRunTerminalEvent({ type }) } }));
+
+const ev = Object.fromEntries(runEvents.map((e) => [e.type, e]));
+const wait = (callId) => ({ type: "awaiting-user", callId, card: { ...runCard, callId } });
+const answer = (callId) => ({ type: "user-responded", callId, action: { ...runAction, callId } });
+const result = (callId) => ({ type: "tool-result", callId, name: "search", output: null, ms: 1 });
+const runStreams = [
+  [],
+  [null, 42, "run-finish", [], {}, { type: 7 }, { type: "resync" }, { type: "done" }],
+  [ev["run-start"]],
+  [ev["run-start"], ev["text-delta"]],
+  [ev["run-start"], ev["text-delta"], ev["run-finish"]],
+  [ev["run-finish"]],
+  [ev["text-delta"]],
+  [ev["run-start"], ev["error"]],
+  [ev["run-start"], ev["error"], { ...ev["run-finish"], finishReason: "error" }],
+  [ev["run-start"], { ...ev["run-finish"], finishReason: "cancelled" }],
+  [ev["run-start"], ev["tool-call"], wait("call_1")],
+  [ev["run-start"], ev["tool-call"], wait("call_1"), answer("call_1")],
+  [ev["run-start"], ev["tool-call"], wait("call_1"), answer("call_1"), result("call_1"), ev["run-finish"]],
+  [ev["run-start"], wait("call_1"), result("call_1")],
+  [ev["run-start"], wait("call_1"), wait("call_2"), answer("call_1")],
+  [ev["run-start"], wait("call_1"), wait("call_2"), answer("call_1"), answer("call_2")],
+  [ev["run-start"], wait("call_1"), answer("call_2")],
+  [ev["run-start"], wait("call_1"), wait("call_1"), answer("call_1")],
+  [ev["run-start"], wait("call_1"), ev["run-finish"]],
+  [ev["run-start"], wait("call_1"), ev["run-snapshot"]],
+  [ev["run-start"], wait("call_1"), ev["run-snapshot"], wait("call_1")],
+  [ev["run-start"], ev["run-finish"], ev["run-snapshot"]],
+  [ev["run-start"], ev["run-finish"], ev["run-start"]],
+  [ev["run-start"], ev["run-finish"], ev["run-start"], ev["text-delta"], ev["run-finish"]],
+  [ev["run-start"], ev["run-finish"], wait("call_1")],
+  [ev["run-start"], ev["run-finish"], ev["text-delta"]],
+  [ev["run-snapshot"]],
+  [ev["run-snapshot"], wait("call_1")],
+  [ev["run-snapshot"], ev["text-delta"], ev["run-finish"]],
+  [ev["run-start"], { type: "awaiting-user" }],
+  [ev["run-start"], { type: "awaiting-user", callId: 7 }, { type: "user-responded" }],
+  [ev["run-start"], wait("call_1"), { type: "resync" }, { type: "done" }],
+  [{ type: "resync" }, ev["run-start"], ev["step-start"], ev["usage"], ev["step-finish"]],
+  [ev["run-start"], ev["job-started"], ev["job-status"]],
+  runEvents,
+];
+const runStreamCases = runStreams.map((events) => ({ events, expect: runStreamOutcome(clone(events)) }));
+
 // ---- SSE parser ------------------------------------------------------------------------------
 const enc = new TextEncoder();
 const hex = (bytes) => Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
@@ -798,7 +948,7 @@ const chartRefCases = chartRefTargets.map((href) => {
 
 const out = {
   version: 1,
-  note: "Generated by scripts/export-conformance.mjs from the TypeScript reference in implementations/typescript/. Manifest and card validators (editor, chart, plot) return their issue lists or result objects as is; sse chunks are hex-encoded bytes. plot_fallback_message is the text a user sees in place of a plot that cannot be drawn.",
+  note: "Generated by scripts/export-conformance.mjs from the TypeScript reference in implementations/typescript/. Manifest and card validators (editor, chart, plot) return their issue lists or result objects as is; sse chunks are hex-encoded bytes. run_event holds issue lists, run_event_type whether a type is known and whether it ends a run, run_stream_outcome what a stopped stream says about its run. plot_fallback_message is the text a user sees in place of a plot that cannot be drawn.",
   plugin_manifest: manifestCases,
   editor_card: editorCases,
   chart_card: chartCases,
@@ -807,18 +957,21 @@ const out = {
   card_ref_format: refFormatCases,
   chart_ref: chartRefCases,
   terminal_event: terminalCases,
+  run_event: runEventCases,
+  run_event_type: runEventTypeCases,
+  run_stream_outcome: runStreamCases,
   sse: sseCases,
 };
 const lines = (key) => out[key].map((c) => "  " + JSON.stringify(c)).join(",\n");
 const body =
   `{\n "version": 1,\n "note": ${JSON.stringify(out.note)},\n` +
   ` "plot_fallback_message": ${JSON.stringify(PLOT_FALLBACK_MESSAGE)},\n` +
-  ["plugin_manifest", "editor_card", "chart_card", "plot_card", "card_ref_parse", "card_ref_format", "chart_ref", "terminal_event", "sse"]
+  ["plugin_manifest", "editor_card", "chart_card", "plot_card", "card_ref_parse", "card_ref_format", "chart_ref", "terminal_event", "run_event", "run_event_type", "run_stream_outcome", "sse"]
     .map((k) => ` "${k}": [\n${lines(k)}\n ]`)
     .join(",\n") +
   "\n}\n";
 writeFileSync(new URL("../conformance/protocol.v1.json", import.meta.url), body);
 const ok = (cases) => cases.filter((c) => (Array.isArray(c.expect) ? c.expect.length === 0 : c.expect?.ok === true)).length;
 console.log(
-  `manifest ${manifestCases.length} (${ok(manifestCases)} valid), editor ${editorCases.length} (${ok(editorCases)} valid), chart ${chartCases.length} (${ok(chartCases)} valid), plot ${plotCases.length} (${ok(plotCases)} valid), ref parse ${refParseCases.length} (${refParseCases.filter((c) => c.expect.ok).length} valid), ref format ${refFormatCases.length} (${refFormatCases.filter((c) => c.expect !== null).length} valid), chart ref ${chartRefCases.length} (${chartRefCases.filter((c) => c.expect?.ok).length} valid), terminal ${terminalCases.length}, sse ${sseCases.length} (${sseCases.filter((c) => c.expect.error).length} errors)`,
+  `manifest ${manifestCases.length} (${ok(manifestCases)} valid), editor ${editorCases.length} (${ok(editorCases)} valid), chart ${chartCases.length} (${ok(chartCases)} valid), plot ${plotCases.length} (${ok(plotCases)} valid), ref parse ${refParseCases.length} (${refParseCases.filter((c) => c.expect.ok).length} valid), ref format ${refFormatCases.length} (${refFormatCases.filter((c) => c.expect !== null).length} valid), chart ref ${chartRefCases.length} (${chartRefCases.filter((c) => c.expect?.ok).length} valid), terminal ${terminalCases.length}, run event ${runEventCases.length} (${ok(runEventCases)} valid), run event type ${runEventTypeCases.length}, run stream ${runStreamCases.length}, sse ${sseCases.length} (${sseCases.filter((c) => c.expect.error).length} errors)`,
 );

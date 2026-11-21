@@ -41,6 +41,11 @@
       "import": "./dist/router.js",
       "default": "./dist/router.js"
     },
+    "./run": {
+      "types": "./dist/run.d.ts",
+      "import": "./dist/run.js",
+      "default": "./dist/run.js"
+    },
     "./editor": {
       "types": "./dist/editor.d.ts",
       "import": "./dist/editor.js",

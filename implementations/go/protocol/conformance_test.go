@@ -47,6 +47,21 @@ type fixtures struct {
 		Type   string `json:"type"`
 		Expect bool   `json:"expect"`
 	} `json:"terminal_event"`
+	RunEvent []struct {
+		Value  any             `json:"value"`
+		Expect []RunEventIssue `json:"expect"`
+	} `json:"run_event"`
+	RunEventType []struct {
+		Type   string `json:"type"`
+		Expect struct {
+			Known    bool `json:"known"`
+			Terminal bool `json:"terminal"`
+		} `json:"expect"`
+	} `json:"run_event_type"`
+	RunStreamOutcome []struct {
+		Events []any            `json:"events"`
+		Expect RunStreamOutcome `json:"expect"`
+	} `json:"run_stream_outcome"`
 	SSE []struct {
 		Chunks        []string `json:"chunks"`
 		MaxFrameBytes *int     `json:"max_frame_bytes"`
@@ -131,6 +146,28 @@ func TestTerminalEvent(t *testing.T) {
 	for _, c := range load(t).TerminalEvent {
 		if got := IsTerminalEvent(c.Type); got != c.Expect {
 			t.Errorf("%q: %v, want %v", c.Type, got, c.Expect)
+		}
+	}
+}
+
+func TestRunEvents(t *testing.T) {
+	f := load(t)
+	if len(f.RunEvent) < 1000 || len(f.RunEventType) < 25 || len(f.RunStreamOutcome) < 30 {
+		t.Fatalf("only %d/%d/%d cases", len(f.RunEvent), len(f.RunEventType), len(f.RunStreamOutcome))
+	}
+	for i, c := range f.RunEvent {
+		if got := ValidateRunEvent(c.Value); !reflect.DeepEqual(got, append([]RunEventIssue{}, c.Expect...)) {
+			t.Errorf("run_event[%d] %v: %v, want %v", i, c.Value, got, c.Expect)
+		}
+	}
+	for _, c := range f.RunEventType {
+		if known, terminal := IsRunEventType(c.Type), IsRunTerminalEvent(c.Type); known != c.Expect.Known || terminal != c.Expect.Terminal {
+			t.Errorf("run_event_type %q: known %v terminal %v, want %+v", c.Type, known, terminal, c.Expect)
+		}
+	}
+	for i, c := range f.RunStreamOutcome {
+		if got := RunStreamOutcomeOf(c.Events); got != c.Expect {
+			t.Errorf("run_stream_outcome[%d]: %s, want %s", i, got, c.Expect)
 		}
 	}
 }

@@ -1,6 +1,7 @@
 # Super Protocol, Go
 
-`protocol`: plugin manifest, editor, chart and plot card validators and an incremental SSE parser.
+`protocol`: plugin manifest, editor, chart and plot card validators, run events (`ValidateRunEvent`,
+`RunStreamOutcomeOf`) and an incremental SSE parser.
 The TypeScript package in [`../typescript`](../typescript) is the reference; this port reproduces every
 case in [`../../conformance`](../../conformance/README.md), messages included. Standard library only.
 

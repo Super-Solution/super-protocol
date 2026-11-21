@@ -11,13 +11,17 @@ from super_protocol import (
     SSEParser,
     StreamFrameTooLarge,
     format_card_ref,
+    is_run_event_type,
+    is_run_terminal_event,
     is_terminal_event,
     parse_card_ref,
     parse_chart_ref,
+    run_stream_outcome,
     validate_chart_card_spec,
     validate_editor_card_spec,
     validate_plot_card_spec,
     validate_plugin_manifest,
+    validate_run_event,
 )
 
 DATA = json.loads((Path(__file__).resolve().parents[3] / "conformance" / "protocol.v1.json").read_text())
@@ -73,6 +77,19 @@ class Conformance(unittest.TestCase):
 
     def test_terminal_event(self) -> None:
         self.check("terminal_event", lambda c: is_terminal_event(c["type"]), 8)
+
+    def test_run_event(self) -> None:
+        self.check("run_event", lambda c: validate_run_event(c["value"]), 1000)
+
+    def test_run_event_type(self) -> None:
+        self.check(
+            "run_event_type",
+            lambda c: {"known": is_run_event_type(c["type"]), "terminal": is_run_terminal_event(c["type"])},
+            25,
+        )
+
+    def test_run_stream_outcome(self) -> None:
+        self.check("run_stream_outcome", lambda c: run_stream_outcome(c["events"]), 30)
 
     def test_sse(self) -> None:
         self.check("sse", run_sse, 300)
