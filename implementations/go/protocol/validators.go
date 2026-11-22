@@ -124,10 +124,13 @@ func ValidatePluginManifest(value any) []ManifestIssue {
 			if !surfaceIsString || !contains(surfaces, surfaceName) {
 				add(path+".surface", "must be one of "+strings.Join(surfaces, ", "))
 			}
-			cardKind, _ := get(cap, "cardKind")
+			cardKind, cardKindPresent := get(cap, "cardKind")
 			toolName, _ := get(cap, "toolName")
 			if k, ok := asString(cardKind); surfaceName == "card" && (!ok || k == "") {
 				add(path+".cardKind", "is required for card capabilities")
+			}
+			if k, ok := asString(cardKind); surfaceName == "panel" && cardKindPresent && (!ok || k == "") {
+				add(path+".cardKind", "must be a non-empty card kind when given")
 			}
 			if n, ok := asString(toolName); surfaceName == "tool" && (!ok || n == "") {
 				add(path+".toolName", "is required for tool capabilities")

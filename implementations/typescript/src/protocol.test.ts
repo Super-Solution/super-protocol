@@ -17,6 +17,10 @@ import {
   parseSSE,
   validateChatPlugin,
   validateEditorCardSpec,
+  CARD_PLACEMENTS,
+  canPlaceCard,
+  isCardPlacement,
+  panelCardKinds,
   validatePluginManifest,
   PLUGIN_TOOL_PRESETS,
   THEME_TOKENS,
@@ -54,12 +58,42 @@ describe("plugin manifest", () => {
   it("rejects a non-http service url", () => expect(validatePluginManifest({ ...manifest, service: { baseUrl: "ftp://x" } })[0]?.path).toBe("service.baseUrl"));
 });
 
+describe("card placement", () => {
+  it("knows the three places", () => {
+    expect(CARD_PLACEMENTS).toEqual(["inline", "panel", "document"]);
+    expect(CARD_PLACEMENTS.every(isCardPlacement)).toBe(true);
+    expect(isCardPlacement("side")).toBe(false);
+  });
+  it("keeps interactive cards inline", () => {
+    expect(canPlaceCard({ interactive: true }, "inline")).toBe(true);
+    expect(canPlaceCard({ interactive: true }, "panel")).toBe(false);
+    expect(canPlaceCard({ interactive: true }, "document")).toBe(false);
+    expect(canPlaceCard({}, "panel")).toBe(true);
+    expect(canPlaceCard(undefined, "document")).toBe(true);
+    expect(canPlaceCard({}, "window")).toBe(false);
+  });
+});
+
 describe("chat plugin", () => {
   const mount = () => ({ update() {}, destroy() {} });
   const plugin: ChatPlugin = { manifest, cardKinds: [editorCardKind], mounts: { [EDITOR_CARD_KIND]: mount } };
   it("is loadable when every capability is implemented", () => expect(validateChatPlugin(plugin)).toEqual([]));
   it("flags a missing card kind and a missing mount", () => {
     expect(validateChatPlugin({ manifest }).map((i) => i.message)).toEqual([`plugin does not define card kind "${EDITOR_CARD_KIND}"`, `plugin has no mount for card kind "${EDITOR_CARD_KIND}"`]);
+  });
+  it("accepts a panel capability that names a card kind it mounts", () => {
+    const m = { ...manifest, capabilities: [...manifest.capabilities, { id: "editor.panel", surface: "panel" as const, cardKind: EDITOR_CARD_KIND }] };
+    expect(validateChatPlugin({ ...plugin, manifest: m })).toEqual([]);
+    expect(panelCardKinds({ manifest: m })).toEqual([EDITOR_CARD_KIND]);
+  });
+  it("flags a panel capability whose card kind the plugin does not define", () => {
+    const m = { ...manifest, capabilities: [...manifest.capabilities, { id: "editor.panel", surface: "panel" as const, cardKind: "x.other" }] };
+    expect(validateChatPlugin({ ...plugin, manifest: m }).map((i) => i.path)).toEqual(["capabilities[1].cardKind", "capabilities[1].cardKind"]);
+  });
+  it("still accepts a bare panel capability, which names no card kind", () => {
+    const m = { ...manifest, capabilities: [...manifest.capabilities, { id: "editor.panel", surface: "panel" as const }] };
+    expect(validateChatPlugin({ ...plugin, manifest: m })).toEqual([]);
+    expect(panelCardKinds({ manifest: m })).toEqual([]);
   });
   it("flags an undefined tool", () => {
     const m = { ...manifest, capabilities: [{ id: "x.run", surface: "tool" as const, toolName: "run" }] };

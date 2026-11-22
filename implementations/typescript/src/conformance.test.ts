@@ -5,7 +5,9 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  canPlaceCard,
   formatCardRef,
+  isCardPlacement,
   isRunEventType,
   isRunTerminalEvent,
   isTerminalEvent,
@@ -58,6 +60,11 @@ describe("conformance data", () => {
     for (const c of data.run_event_type) expect({ known: isRunEventType(c.type), terminal: isRunTerminalEvent({ type: c.type }) }).toEqual(c.expect);
     expect(data.run_stream_outcome.length).toBeGreaterThanOrEqual(30);
     for (const c of data.run_stream_outcome) expect(runStreamOutcome(c.events)).toBe(c.expect);
+  });
+  it("card placement", () => {
+    expect(data.card_placement.length).toBeGreaterThanOrEqual(30);
+    for (const c of data.card_placement)
+      expect({ valid: isCardPlacement(c.value), allowed: canPlaceCard(c.interactive === null ? undefined : { interactive: c.interactive }, c.value) }).toEqual(c.expect);
   });
   it("sse", async () => {
     expect(data.sse.length).toBeGreaterThanOrEqual(300);

@@ -10,7 +10,9 @@ from super_protocol import (
     PLOT_FALLBACK_MESSAGE,
     SSEParser,
     StreamFrameTooLarge,
+    can_place_card,
     format_card_ref,
+    is_card_placement,
     is_run_event_type,
     is_run_terminal_event,
     is_terminal_event,
@@ -90,6 +92,13 @@ class Conformance(unittest.TestCase):
 
     def test_run_stream_outcome(self) -> None:
         self.check("run_stream_outcome", lambda c: run_stream_outcome(c["events"]), 30)
+
+    def test_card_placement(self) -> None:
+        self.check(
+            "card_placement",
+            lambda c: {"valid": is_card_placement(c["value"]), "allowed": can_place_card(c["interactive"], c["value"])},
+            30,
+        )
 
     def test_sse(self) -> None:
         self.check("sse", run_sse, 300)

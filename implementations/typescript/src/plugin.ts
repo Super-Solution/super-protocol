@@ -13,7 +13,10 @@ export interface PluginCapability {
   /** Stable id, namespaced by plugin, e.g. "editor.document". */
   id: string;
   surface: PluginSurface;
-  /** For `card` capabilities: the card `kind` the host routes to this plugin. */
+  /**
+   * For `card` capabilities (required): the card `kind` the host routes to this plugin. For `panel`
+   * capabilities (optional): the card kind made for the side panel, drawn by the same mount.
+   */
   cardKind?: string;
   /** For `tool` capabilities: the tool name offered to the model. */
   toolName?: string;
@@ -68,6 +71,7 @@ export function validatePluginManifest(value: unknown): ManifestIssue[] {
       else seen.add(cap.id);
       if (typeof cap.surface !== "string" || !SURFACES.includes(cap.surface)) add(`${p}.surface`, `must be one of ${SURFACES.join(", ")}`);
       if (cap.surface === "card" && (typeof cap.cardKind !== "string" || cap.cardKind === "")) add(`${p}.cardKind`, "is required for card capabilities");
+      if (cap.surface === "panel" && cap.cardKind !== undefined && (typeof cap.cardKind !== "string" || cap.cardKind === "")) add(`${p}.cardKind`, "must be a non-empty card kind when given");
       if (cap.surface === "tool" && (typeof cap.toolName !== "string" || cap.toolName === "")) add(`${p}.toolName`, "is required for tool capabilities");
       if (cap.inputSchema !== undefined && (typeof cap.inputSchema !== "object" || cap.inputSchema === null || Array.isArray(cap.inputSchema))) add(`${p}.inputSchema`, "must be an object");
     });
