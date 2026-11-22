@@ -89,6 +89,12 @@ def validate_plugin_manifest(value: Any) -> list[ManifestIssue]:
             card_kind, tool_name = get(cap, "cardKind"), get(cap, "toolName")
             if surface == "card" and (not js.is_string(card_kind) or card_kind == ""):
                 add(f"{path}.cardKind", "is required for card capabilities")
+            if (
+                surface == "panel"
+                and card_kind is not UNDEFINED
+                and (not js.is_string(card_kind) or card_kind == "")
+            ):
+                add(f"{path}.cardKind", "must be a non-empty card kind when given")
             if surface == "tool" and (not js.is_string(tool_name) or tool_name == ""):
                 add(f"{path}.toolName", "is required for tool capabilities")
             schema = get(cap, "inputSchema")

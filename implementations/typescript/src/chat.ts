@@ -7,6 +7,7 @@
 import { validatePluginManifest, type ManifestIssue, type PluginManifest } from "./plugin.js";
 import type { CardRef, CardRefEvent, CardRefResult } from "./ref.js";
 import type { HostTheme } from "./theme.js";
+import type { CardPlacement } from "./placement.js";
 
 /**
  * `error` and `expected` are written for the model (so it can send a corrected
@@ -35,6 +36,11 @@ export interface CardResponse {
 
 export interface CardMountContext {
   theme: "light" | "dark";
+  /**
+   * Where the card is shown (see `placement.ts`). Absent from a host that predates placements,
+   * which shows every card inline. A mount adapts its chrome to it and never refuses a placement.
+   */
+  placement?: CardPlacement;
   /** The host's colours and fonts. Absent on hosts that only report light or dark. */
   hostTheme?: HostTheme;
   locale?: string;
@@ -110,6 +116,10 @@ export function pluginToolAuthority(tool: Pick<PluginTool, "authority">): Plugin
 }
 
 export interface ChatPlugin {
+  /**
+   * A `panel` capability with a `cardKind` says that kind is made for the host's side panel (a
+   * document editor, a chart workspace): a host may open it there by default. The same mount draws it.
+   */
   manifest: PluginManifest;
   cardKinds?: CardKindDefinition[];
   /** Mount functions keyed by card kind. */
@@ -130,6 +140,10 @@ export function validateChatPlugin(plugin: ChatPlugin): ManifestIssue[] {
       if (!kinds.has(cap.cardKind!)) add(`${p}.cardKind`, `plugin does not define card kind "${cap.cardKind}"`);
       if (typeof plugin.mounts?.[cap.cardKind!] !== "function") add(`${p}.cardKind`, `plugin has no mount for card kind "${cap.cardKind}"`);
     }
+    if (cap.surface === "panel" && cap.cardKind !== undefined) {
+      if (!kinds.has(cap.cardKind)) add(`${p}.cardKind`, `plugin does not define card kind "${cap.cardKind}"`);
+      if (typeof plugin.mounts?.[cap.cardKind] !== "function") add(`${p}.cardKind`, `plugin has no mount for card kind "${cap.cardKind}"`);
+    }
     if (cap.surface === "tool" && !tools.has(cap.toolName!)) add(`${p}.toolName`, `plugin does not define tool "${cap.toolName}"`);
   });
   (plugin.tools ?? []).forEach((tool, i) => {
@@ -138,4 +152,13 @@ export function validateChatPlugin(plugin: ChatPlugin): ManifestIssue[] {
     if (tool.confirm !== undefined && typeof tool.confirm !== "boolean") add(`tools[${i}].confirm`, "must be a boolean");
   });
   return issues;
+}
+
+/** The card kinds a plugin declared for the side panel (its `panel` capabilities that name one). */
+export function panelCardKinds(plugin: Pick<ChatPlugin, "manifest">): string[] {
+  const kinds: string[] = [];
+  for (const cap of plugin?.manifest?.capabilities ?? []) {
+    if (cap.surface === "panel" && typeof cap.cardKind === "string" && cap.cardKind !== "" && !kinds.includes(cap.cardKind)) kinds.push(cap.cardKind);
+  }
+  return kinds;
 }

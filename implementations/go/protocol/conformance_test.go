@@ -62,6 +62,14 @@ type fixtures struct {
 		Events []any            `json:"events"`
 		Expect RunStreamOutcome `json:"expect"`
 	} `json:"run_stream_outcome"`
+	CardPlacement []struct {
+		Value       any   `json:"value"`
+		Interactive *bool `json:"interactive"`
+		Expect      struct {
+			Valid   bool `json:"valid"`
+			Allowed bool `json:"allowed"`
+		} `json:"expect"`
+	} `json:"card_placement"`
 	SSE []struct {
 		Chunks        []string `json:"chunks"`
 		MaxFrameBytes *int     `json:"max_frame_bytes"`
@@ -168,6 +176,18 @@ func TestRunEvents(t *testing.T) {
 	for i, c := range f.RunStreamOutcome {
 		if got := RunStreamOutcomeOf(c.Events); got != c.Expect {
 			t.Errorf("run_stream_outcome[%d]: %s, want %s", i, got, c.Expect)
+		}
+	}
+}
+
+func TestCardPlacement(t *testing.T) {
+	f := load(t)
+	if len(f.CardPlacement) < 30 {
+		t.Fatalf("only %d cases", len(f.CardPlacement))
+	}
+	for i, c := range f.CardPlacement {
+		if valid, allowed := IsCardPlacement(c.Value), CanPlaceCard(c.Interactive, c.Value); valid != c.Expect.Valid || allowed != c.Expect.Allowed {
+			t.Errorf("card_placement[%d] %v interactive %v: valid %v allowed %v, want %+v", i, c.Value, c.Interactive, valid, allowed, c.Expect)
 		}
 	}
 }

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Python port of the Super Solution protocol validators and SSE parser."""
 
+from .placement import CARD_PLACEMENTS, can_place_card, is_card_placement
 from .ref import CARD_REF_LIMITS, CARD_REF_SCHEME, CardRef, format_card_ref, parse_card_ref, parse_chart_ref
 from .run import (
     RUN_CARD_ACTION_TYPES,
@@ -40,6 +41,9 @@ from .validators import (
 )
 
 __all__ = [
+    "CARD_PLACEMENTS",
+    "can_place_card",
+    "is_card_placement",
     "CARD_REF_LIMITS",
     "CARD_REF_SCHEME",
     "CardRef",
