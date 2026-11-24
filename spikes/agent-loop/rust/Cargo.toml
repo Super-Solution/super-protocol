@@ -1,0 +1,10 @@
+[package]
+name = "agent-loop-spike"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "Throwaway spike: the agent loop as a sans-IO state machine, checked against ../cases/agent-loop.v0.json."
+license = "Apache-2.0"
+
+[dependencies]
+serde_json = "1"
