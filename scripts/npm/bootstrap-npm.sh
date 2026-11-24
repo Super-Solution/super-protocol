@@ -49,6 +49,8 @@ super-router|npm-publish.yml|@supersolutions/super-router-server|Apache-2.0
 super-router|npm-publish.yml|@supersolutions/super-router-worker|Apache-2.0
 super-router|npm-publish.yml|@supersolutions/super-router-ui|Apache-2.0
 super-editor|publish.yml|@supersolutions/super-editor-core|GPL-3.0-or-later
+super-editor|publish.yml|@supersolutions/super-editor-opc|GPL-3.0-or-later
+super-editor|publish.yml|@supersolutions/super-editor-docx|GPL-3.0-or-later
 super-editor|publish.yml|@supersolutions/super-editor-ui|GPL-3.0-or-later
 super-editor|publish.yml|@supersolutions/super-editor-react|GPL-3.0-or-later
 super-editor|publish.yml|@supersolutions/super-editor-element|GPL-3.0-or-later
