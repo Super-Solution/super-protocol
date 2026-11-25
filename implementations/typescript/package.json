@@ -88,6 +88,16 @@
       "types": "./dist/version.d.ts",
       "import": "./dist/version.js",
       "default": "./dist/version.js"
+    },
+    "./interop/ag-ui": {
+      "types": "./dist/interop/ag-ui.d.ts",
+      "import": "./dist/interop/ag-ui.js",
+      "default": "./dist/interop/ag-ui.js"
+    },
+    "./interop/ai-sdk": {
+      "types": "./dist/interop/ai-sdk.d.ts",
+      "import": "./dist/interop/ai-sdk.js",
+      "default": "./dist/interop/ai-sdk.js"
     }
   },
   "files": [
@@ -110,10 +120,13 @@
     "prepublishOnly": "pnpm run build"
   },
   "devDependencies": {
+    "@ag-ui/core": "1.0.4",
     "@types/node": "^22.10.2",
+    "ai": "7.0.168",
     "ajv": "8.17.1",
     "tsup": "^8.3.5",
     "typescript": "^5.7.2",
-    "vitest": "^2.1.8"
+    "vitest": "^2.1.8",
+    "zod": "4.1.8"
   }
 }

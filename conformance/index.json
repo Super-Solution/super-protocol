@@ -20,6 +20,26 @@
     "cases": 31
    }
   },
+  "interop-ag-ui.v0.json": {
+   "status": "draft",
+   "sha256": "d4a59ee9d7410403db1f3a4858a0139dcc1ff8a4e10815eed95eac8b4a37d45a",
+   "bytes": 48340,
+   "cases": 31,
+   "sections": {
+    "encode": 19,
+    "decode": 12
+   }
+  },
+  "interop-ai-sdk.v0.json": {
+   "status": "draft",
+   "sha256": "1374e19ad40514904d804361c19c7c7a386bc9503f7cc2a0a4d13c333eda2ad3",
+   "bytes": 51696,
+   "cases": 31,
+   "sections": {
+    "encode": 19,
+    "decode": 12
+   }
+  },
   "protocol.v1.json": {
    "status": "stable",
    "sha256": "7d91e6a83bde5d2525853d3c19df4b75ed1d4b45f959fd8298c7ac31dec748b6",

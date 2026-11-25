@@ -28,6 +28,9 @@ node scripts/export-agent-loop.mjs --check
 node scripts/export-index.mjs --check
 echo "== json schemas are reproducible from the package"
 node scripts/export-schemas.mjs --check
+echo "== draft interop golden files are reproducible (and valid for the real ai and @ag-ui/core packages)"
+node scripts/export-interop-ag-ui.mjs --check
+node scripts/export-interop-ai-sdk.mjs --check
 # The repair cases are generated from Super Chat's repair.ts: checked only when a Super Chat checkout is known.
 if [ -n "${SUPER_CHAT_DIR:-}" ]; then
   node scripts/export-tool-repair.mjs --check
