@@ -470,7 +470,7 @@ func ValidateChartCardSpec(spec any) CardResult {
 	return CardResult{OK: true}
 }
 
-const plotExpected = `spec: { ...a plot spec }, alt: "one sentence saying what the plot shows"`
+const plotExpected = `spec: { type: "bar", data: [{ region: "EU", revenue: 12 }, { region: "US", revenue: 20 }], x: "region", y: "revenue" } (the plot itself, its data inside it), alt: "one sentence saying what the plot shows" (beside spec, not inside it)`
 
 // ValidatePlotCardSpec checks the envelope of a `super.plot` card; the inner `spec` is opaque and checked by the
 // plugin that draws it. The errors are for the model and the developer log, not for the user.
