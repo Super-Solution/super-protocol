@@ -11,7 +11,9 @@ import { PROTOCOL_VERSION_PATTERN } from "./version.js";
 
 export const PLUGIN_MANIFEST_VERSION = 0 as const;
 
-export type PluginSurface = "card" | "panel" | "tool" | "canvas";
+export const PLUGIN_SURFACES = ["card", "panel", "tool", "canvas"] as const;
+
+export type PluginSurface = (typeof PLUGIN_SURFACES)[number];
 
 export interface PluginCapability {
   /** Stable id, namespaced by plugin, e.g. "editor.document". */
@@ -51,7 +53,6 @@ const NAME = /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/;
 const SEMVER = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;
 const CAPABILITY_ID = /^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$/;
 const PROTOCOL_MESSAGE = "must be a protocol version such as 0.5";
-const SURFACES: readonly string[] = ["card", "panel", "tool", "canvas"];
 
 /** Returns every problem found; an empty array means the manifest is valid. */
 export function validatePluginManifest(value: unknown): Issue[] {
@@ -80,7 +81,7 @@ export function validatePluginManifest(value: unknown): Issue[] {
       if (typeof cap.id !== "string" || !CAPABILITY_ID.test(cap.id)) pattern(add, `${p}.id`, cap.id, CAPABILITY_ID, "must be a dotted lowercase id such as editor.document");
       else if (seen.has(cap.id)) add(`${p}.id`, "unique", "duplicate capability id");
       else seen.add(cap.id);
-      oneOf(add, `${p}.surface`, cap.surface, SURFACES, `must be one of ${SURFACES.join(", ")}`);
+      oneOf(add, `${p}.surface`, cap.surface, PLUGIN_SURFACES);
       if (cap.surface === "card") text(add, `${p}.cardKind`, cap.cardKind, "is required for card capabilities");
       if (cap.surface === "panel" && cap.cardKind !== undefined) text(add, `${p}.cardKind`, cap.cardKind, "must be a non-empty card kind when given");
       if (cap.surface === "tool") text(add, `${p}.toolName`, cap.toolName, "is required for tool capabilities");

@@ -11,6 +11,7 @@
     "test": "pnpm --filter @supersolutions/super-protocol test",
     "typecheck": "pnpm --filter @supersolutions/super-protocol typecheck",
     "conformance:export": "node scripts/export-conformance.mjs && node scripts/export-index.mjs",
+    "schemas:export": "node scripts/export-schemas.mjs",
     "agent-loop:export": "node scripts/export-agent-loop.mjs",
     "check": "bash scripts/check-all.sh"
   }

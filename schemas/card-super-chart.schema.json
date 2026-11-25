@@ -1,0 +1,175 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Super-Solution/super-protocol/main/schemas/card-super-chart.schema.json",
+  "title": "Card spec: super-chart.chart",
+  "description": "The spec of a `super-chart.chart` card. A financial chart the user can pan, zoom, draw on and replay: candles or lines, indicators, and your annotations (levels, zones, markers, trend lines, rays, fibonacci retracements, trade plans). Structure only. A value this schema accepts can still be refused by the validator: rules across fields (duplicates, a tool result that answers no call, ordering, limits that count UTF-16 units) are checked by the validators and pinned by conformance/protocol.v1.json, not here. A value the validators accept always validates.",
+  "type": "object",
+  "required": [
+    "kind",
+    "symbol",
+    "period"
+  ],
+  "properties": {
+    "kind": {
+      "const": "super-chart.chart"
+    },
+    "id": {
+      "type": "string",
+      "description": "Stable id so later tool calls can address this chart."
+    },
+    "title": {
+      "type": "string"
+    },
+    "symbol": {
+      "type": "object",
+      "required": [
+        "ticker"
+      ],
+      "properties": {
+        "ticker": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "exchange": {
+          "type": "string"
+        },
+        "pricePrecision": {
+          "type": [
+            "integer",
+            "string"
+          ]
+        },
+        "timezone": {
+          "type": "string"
+        }
+      }
+    },
+    "period": {
+      "type": "object",
+      "required": [
+        "multiplier",
+        "timespan",
+        "text"
+      ],
+      "properties": {
+        "multiplier": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "timespan": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      }
+    },
+    "height": {
+      "type": "number",
+      "minimum": 160,
+      "maximum": 1200
+    },
+    "chartType": {
+      "enum": [
+        "candles",
+        "hollow-candles",
+        "ohlc",
+        "line",
+        "area",
+        "baseline",
+        "heikin-ashi"
+      ]
+    },
+    "bars": {
+      "type": "array",
+      "description": "Inline OHLCV bars, oldest first. Use this or `feed`.",
+      "maxItems": 20000
+    },
+    "feed": {
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "description": "A datafeed the host registered."
+    },
+    "indicators": {
+      "type": "array",
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "params": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    },
+    "annotations": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "required": [
+          "key",
+          "kind",
+          "anchors"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "level",
+              "zone",
+              "marker",
+              "trend",
+              "ray",
+              "fibonacci",
+              "plan"
+            ],
+            "description": "level: 1 anchor with price. zone: 2 anchors with price. marker: 1 anchor. trend and ray: 2 anchors with price. fibonacci: 2 anchors with price. plan: 3 anchors with price (entry, target, stop)."
+          },
+          "anchors": {
+            "type": "array",
+            "maxItems": 3
+          },
+          "text": {
+            "type": "string"
+          },
+          "tone": {
+            "enum": [
+              "bull",
+              "bear",
+              "neutral",
+              "accent"
+            ]
+          },
+          "color": {
+            "type": "string"
+          },
+          "params": {
+            "type": "object",
+            "description": "Options for trend, ray, fibonacci and plan, for example { extend: \"right\" } or { levels: \"0,0.5,1\" }."
+          }
+        }
+      }
+    }
+  }
+}

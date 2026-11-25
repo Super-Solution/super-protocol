@@ -26,6 +26,8 @@ done
 echo "== agent loop cases are reproducible from their source"
 node scripts/export-agent-loop.mjs --check
 node scripts/export-index.mjs --check
+echo "== json schemas are reproducible from the package"
+node scripts/export-schemas.mjs --check
 # The repair cases are generated from Super Chat's repair.ts: checked only when a Super Chat checkout is known.
 if [ -n "${SUPER_CHAT_DIR:-}" ]; then
   node scripts/export-tool-repair.mjs --check

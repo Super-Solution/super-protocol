@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Super-Solution/super-protocol/main/schemas/run-card.schema.json",
+  "title": "Run card",
+  "description": "A card in a run: its id, its spec (the `kind` routes it to a renderer) and, once the person answered, what they answered. Structure only. A value this schema accepts can still be refused by the validator: rules across fields (duplicates, a tool result that answers no call, ordering, limits that count UTF-16 units) are checked by the validators and pinned by conformance/protocol.v1.json, not here. A value the validators accept always validates.",
+  "type": "object",
+  "required": [
+    "id",
+    "spec"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "spec": {
+      "$ref": "#/$defs/cardSpec"
+    },
+    "expired": {
+      "type": "boolean"
+    },
+    "callId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "action": {
+      "$ref": "#/$defs/cardAction"
+    }
+  },
+  "$defs": {
+    "usage": {
+      "type": "object",
+      "properties": {
+        "inputTokens": {
+          "type": "number",
+          "minimum": 0
+        },
+        "outputTokens": {
+          "type": "number",
+          "minimum": 0
+        },
+        "totalTokens": {
+          "type": "number",
+          "minimum": 0
+        },
+        "cachedInputTokens": {
+          "type": "number",
+          "minimum": 0
+        },
+        "reasoningTokens": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "cardSpec": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "cardAction": {
+      "type": "object",
+      "required": [
+        "cardId",
+        "kind",
+        "type",
+        "at"
+      ],
+      "properties": {
+        "cardId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "enum": [
+            "submit",
+            "select",
+            "confirm",
+            "cancel",
+            "dismiss"
+          ]
+        },
+        "at": {
+          "type": "number",
+          "minimum": 0
+        },
+        "callId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {}
+      }
+    },
+    "runCard": {
+      "type": "object",
+      "required": [
+        "id",
+        "spec"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "spec": {
+          "$ref": "#/$defs/cardSpec"
+        },
+        "expired": {
+          "type": "boolean"
+        },
+        "callId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action": {
+          "$ref": "#/$defs/cardAction"
+        }
+      }
+    },
+    "part": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "handle": {
+      "type": "object",
+      "required": [
+        "provider",
+        "id"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string",
+          "minLength": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

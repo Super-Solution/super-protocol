@@ -1,0 +1,701 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Super-Solution/super-protocol/main/schemas/run-event.schema.json",
+  "title": "Run event",
+  "description": "One event of an agent run, as it is streamed. A reader skips an event type it does not know; a producer checks what it sends against this. Structure only. A value this schema accepts can still be refused by the validator: rules across fields (duplicates, a tool result that answers no call, ordering, limits that count UTF-16 units) are checked by the validators and pinned by conformance/protocol.v1.json, not here. A value the validators accept always validates.",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "runId",
+        "mode"
+      ],
+      "properties": {
+        "type": {
+          "const": "run-start"
+        },
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mode": {
+          "enum": [
+            "stream",
+            "sync",
+            "background"
+          ]
+        },
+        "threadId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "protocol": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,8})\\.(0|[1-9][0-9]{0,8})$"
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "parts",
+        "cards"
+      ],
+      "properties": {
+        "type": {
+          "const": "run-snapshot"
+        },
+        "parts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/part"
+          }
+        },
+        "cards": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/runCard"
+          }
+        },
+        "usage": {
+          "$ref": "#/$defs/usage"
+        },
+        "steps": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "trace",
+        "system",
+        "toolNames"
+      ],
+      "properties": {
+        "type": {
+          "const": "context-built"
+        },
+        "trace": {
+          "type": "object"
+        },
+        "system": {
+          "type": "string"
+        },
+        "toolNames": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "step"
+      ],
+      "properties": {
+        "type": {
+          "const": "step-start"
+        },
+        "step": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "delta"
+      ],
+      "properties": {
+        "type": {
+          "const": "text-delta"
+        },
+        "delta": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "delta"
+      ],
+      "properties": {
+        "type": {
+          "const": "reasoning-delta"
+        },
+        "delta": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "callId",
+        "name"
+      ],
+      "properties": {
+        "type": {
+          "const": "tool-call-input-delta"
+        },
+        "callId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "partialInput": {},
+        "partialCard": {
+          "$ref": "#/$defs/cardSpec"
+        },
+        "loading": {
+          "type": "object"
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "callId",
+        "name"
+      ],
+      "properties": {
+        "type": {
+          "const": "tool-call"
+        },
+        "callId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "input": {},
+        "repaired": {
+          "type": "boolean"
+        },
+        "loading": {
+          "type": "object"
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "callId",
+        "card"
+      ],
+      "properties": {
+        "type": {
+          "const": "awaiting-user"
+        },
+        "callId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "card": {
+          "$ref": "#/$defs/runCard"
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "callId",
+        "action"
+      ],
+      "properties": {
+        "type": {
+          "const": "user-responded"
+        },
+        "callId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action": {
+          "$ref": "#/$defs/cardAction"
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "callId",
+        "name",
+        "ms"
+      ],
+      "properties": {
+        "type": {
+          "const": "tool-result"
+        },
+        "callId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "output": {},
+        "failure": {
+          "type": "string"
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "card"
+      ],
+      "properties": {
+        "type": {
+          "const": "card"
+        },
+        "card": {
+          "$ref": "#/$defs/runCard"
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "cardId",
+        "spec"
+      ],
+      "properties": {
+        "type": {
+          "const": "card-updated"
+        },
+        "cardId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "spec": {
+          "$ref": "#/$defs/cardSpec"
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "step",
+        "finishReason"
+      ],
+      "properties": {
+        "type": {
+          "const": "step-finish"
+        },
+        "step": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "finishReason": {
+          "enum": [
+            "stop",
+            "length",
+            "tool-calls",
+            "content-filter",
+            "cancelled",
+            "error",
+            "unknown"
+          ]
+        },
+        "usage": {
+          "$ref": "#/$defs/usage"
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "handle"
+      ],
+      "properties": {
+        "type": {
+          "const": "job-started"
+        },
+        "handle": {
+          "$ref": "#/$defs/handle"
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "handle",
+        "status"
+      ],
+      "properties": {
+        "type": {
+          "const": "job-status"
+        },
+        "handle": {
+          "$ref": "#/$defs/handle"
+        },
+        "status": {
+          "enum": [
+            "queued",
+            "in_progress",
+            "completed",
+            "failed",
+            "cancelled",
+            "incomplete"
+          ]
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "parts"
+      ],
+      "properties": {
+        "type": {
+          "const": "message"
+        },
+        "parts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/part"
+          }
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "record"
+      ],
+      "properties": {
+        "type": {
+          "const": "metering"
+        },
+        "record": {
+          "type": "object"
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "usage"
+      ],
+      "properties": {
+        "type": {
+          "const": "usage"
+        },
+        "usage": {
+          "$ref": "#/$defs/usage"
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "runId",
+        "finishReason",
+        "usage",
+        "steps"
+      ],
+      "properties": {
+        "type": {
+          "const": "run-finish"
+        },
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "finishReason": {
+          "enum": [
+            "stop",
+            "length",
+            "tool-calls",
+            "content-filter",
+            "cancelled",
+            "error",
+            "unknown"
+          ]
+        },
+        "usage": {
+          "$ref": "#/$defs/usage"
+        },
+        "steps": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "recoverable"
+      ],
+      "properties": {
+        "type": {
+          "const": "error"
+        },
+        "recoverable": {
+          "type": "boolean"
+        },
+        "error": {},
+        "seq": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "usage": {
+      "type": "object",
+      "properties": {
+        "inputTokens": {
+          "type": "number",
+          "minimum": 0
+        },
+        "outputTokens": {
+          "type": "number",
+          "minimum": 0
+        },
+        "totalTokens": {
+          "type": "number",
+          "minimum": 0
+        },
+        "cachedInputTokens": {
+          "type": "number",
+          "minimum": 0
+        },
+        "reasoningTokens": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "cardSpec": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "cardAction": {
+      "type": "object",
+      "required": [
+        "cardId",
+        "kind",
+        "type",
+        "at"
+      ],
+      "properties": {
+        "cardId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "enum": [
+            "submit",
+            "select",
+            "confirm",
+            "cancel",
+            "dismiss"
+          ]
+        },
+        "at": {
+          "type": "number",
+          "minimum": 0
+        },
+        "callId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {}
+      }
+    },
+    "runCard": {
+      "type": "object",
+      "required": [
+        "id",
+        "spec"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "spec": {
+          "$ref": "#/$defs/cardSpec"
+        },
+        "expired": {
+          "type": "boolean"
+        },
+        "callId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action": {
+          "$ref": "#/$defs/cardAction"
+        }
+      }
+    },
+    "part": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "handle": {
+      "type": "object",
+      "required": [
+        "provider",
+        "id"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string",
+          "minLength": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

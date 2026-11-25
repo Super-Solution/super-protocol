@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Super-Solution/super-protocol/main/schemas/card-super-plot.schema.json",
+  "title": "Card spec: super.plot",
+  "description": "The spec of a `super.plot` card. A statistical plot (bar, line, scatter, histogram, box, heatmap and more) the user can read, hover and export. Send the plot spec and a sentence saying what it shows. Name the title, axes and series the way the user would, not by column keys. Structure only. A value this schema accepts can still be refused by the validator: rules across fields (duplicates, a tool result that answers no call, ordering, limits that count UTF-16 units) are checked by the validators and pinned by conformance/protocol.v1.json, not here. A value the validators accept always validates.",
+  "type": "object",
+  "required": [
+    "kind",
+    "spec",
+    "alt"
+  ],
+  "properties": {
+    "kind": {
+      "const": "super.plot"
+    },
+    "id": {
+      "type": "string",
+      "maxLength": 128,
+      "description": "Stable id so later tool calls can address this plot. Not shown to the user."
+    },
+    "title": {
+      "type": "string",
+      "description": "Shown above the plot, in the user's words: \"Revenue by region\", not \"revenue_by_region\"."
+    },
+    "height": {
+      "type": "number",
+      "minimum": 160,
+      "maximum": 1200
+    },
+    "spec": {
+      "type": "object",
+      "description": "The plot spec: data, chart type and encodings. Give axes and series readable labels, not raw column keys."
+    },
+    "alt": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "description": "What the plot shows, in plain words: the main values and the takeaway. Read by screen readers and shown to the user if the plot cannot be drawn."
+    }
+  }
+}

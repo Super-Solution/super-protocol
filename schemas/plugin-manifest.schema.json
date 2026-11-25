@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Super-Solution/super-protocol/main/schemas/plugin-manifest.schema.json",
+  "title": "Plugin manifest",
+  "description": "What a plugin declares so a host can load it: its name, licence, capabilities and optional service and protocol version. Structure only. A value this schema accepts can still be refused by the validator: rules across fields (duplicates, a tool result that answers no call, ordering, limits that count UTF-16 units) are checked by the validators and pinned by conformance/protocol.v1.json, not here. A value the validators accept always validates.",
+  "type": "object",
+  "required": [
+    "manifestVersion",
+    "name",
+    "version",
+    "license",
+    "capabilities"
+  ],
+  "properties": {
+    "manifestVersion": {
+      "const": 0
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^(@[a-z0-9\\-~][a-z0-9\\-._~]*/)?[a-z0-9\\-~][a-z0-9\\-._~]*$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.\\-]+)?(\\+[0-9A-Za-z.\\-]+)?$"
+    },
+    "license": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/capability"
+      },
+      "minItems": 1
+    },
+    "service": {
+      "type": "object",
+      "required": [
+        "baseUrl"
+      ],
+      "properties": {
+        "baseUrl": {
+          "type": "string",
+          "pattern": "^[hH][tT][tT][pP][sS]?:"
+        }
+      }
+    },
+    "protocol": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]{0,8})\\.(0|[1-9][0-9]{0,8})$"
+    }
+  },
+  "$defs": {
+    "capability": {
+      "type": "object",
+      "required": [
+        "id",
+        "surface"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9\\-]*(\\.[a-z][a-z0-9\\-]*)+$"
+        },
+        "surface": {
+          "enum": [
+            "card",
+            "panel",
+            "tool",
+            "canvas"
+          ]
+        },
+        "inputSchema": {
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "surface": {
+                "const": "card"
+              }
+            },
+            "required": [
+              "surface"
+            ]
+          },
+          "then": {
+            "required": [
+              "cardKind"
+            ],
+            "properties": {
+              "cardKind": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "surface": {
+                "const": "panel"
+              }
+            },
+            "required": [
+              "surface"
+            ]
+          },
+          "then": {
+            "properties": {
+              "cardKind": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "surface": {
+                "const": "tool"
+              }
+            },
+            "required": [
+              "surface"
+            ]
+          },
+          "then": {
+            "required": [
+              "toolName"
+            ],
+            "properties": {
+              "toolName": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
