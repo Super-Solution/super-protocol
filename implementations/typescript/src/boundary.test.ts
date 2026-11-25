@@ -21,4 +21,12 @@ describe("license boundary", () => {
       }
     }
   });
+  it("builds every subpath the package exports", () => {
+    const config = readFileSync(new URL("../tsup.config.ts", import.meta.url), "utf8");
+    const entries = [...config.matchAll(/(\w+):\s*"src\/[^"]+"/g)].map((m) => m[1]);
+    for (const [subpath, target] of Object.entries<{ import: string }>(pkg.exports)) {
+      const name = /^\.\/dist\/([^/]+)\.js$/.exec(target.import)?.[1];
+      expect(entries, `${subpath} -> ${target.import}`).toContain(name);
+    }
+  });
 });
