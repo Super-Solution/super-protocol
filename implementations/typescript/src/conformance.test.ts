@@ -6,6 +6,11 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   ISSUE_CODES,
+  PROTOCOL_FEATURES,
+  PROTOCOL_VERSION,
+  compareProtocolVersions,
+  parseProtocolFeature,
+  parseProtocolVersion,
   PLUGIN_TOOL_PRESETS,
   didYouMean,
   finishReasonFromGateway,
@@ -66,6 +71,18 @@ describe("conformance data", () => {
     }
     // Every code in the vocabulary is exercised by the data, so a port cannot leave one out unnoticed.
     expect([...ISSUE_CODES].filter((code) => !seen.has(code))).toEqual([]);
+  });
+  it("protocol version", () => {
+    expect(data.protocol).toEqual({ version: PROTOCOL_VERSION, features: [...PROTOCOL_FEATURES] });
+    expect(data.protocol_version.length).toBeGreaterThanOrEqual(60);
+    for (const c of data.protocol_version) {
+      if (c.fn === "parse") expect(parseProtocolVersion(c.value)).toEqual(c.expect);
+      else if (c.fn === "compare") expect(compareProtocolVersions(c.a, c.b)).toEqual(c.expect);
+      else {
+        const f = parseProtocolFeature(c.value);
+        expect(f === null ? null : { name: f.name, major: f.version.major, minor: f.version.minor }).toEqual(c.expect);
+      }
+    }
   });
   it("mapping", () => {
     expect(data.mapping.length).toBeGreaterThanOrEqual(120);

@@ -15,6 +15,7 @@ from . import _js as js
 from ._check import Checker
 from ._js import UNDEFINED, get
 from .issue import Issue, json_type
+from .version import PROTOCOL_VERSION_MESSAGE, PROTOCOL_VERSION_PATTERN
 
 PLUGIN_MANIFEST_VERSION = 0
 EDITOR_CARD_KIND = "super-editor.document"
@@ -58,18 +59,14 @@ def validate_plugin_manifest(value: Any) -> list[Issue]:
         c.wrong_type("", value, "manifest must be an object")
         return c.issues
 
-    def pattern(path: str, v: Any, regex: re.Pattern[str], message: str) -> None:
-        if not js.is_string(v):
-            c.wrong_type(path, v, message)
-        elif regex.fullmatch(v) is None:
-            c.add(path, "format", message)
-
     version = get(value, "manifestVersion")
     if not js.equals_number(version, PLUGIN_MANIFEST_VERSION):
         c.add("manifestVersion", "required" if version is UNDEFINED else "enum", f"must be {PLUGIN_MANIFEST_VERSION}")
-    pattern("name", get(value, "name"), _NAME, "must be a valid npm package name")
-    pattern("version", get(value, "version"), _SEMVER, "must be a semver string")
+    c.pattern("name", get(value, "name"), _NAME, "must be a valid npm package name")
+    c.pattern("version", get(value, "version"), _SEMVER, "must be a semver string")
     c.filled("license", get(value, "license"), "must be a non-empty SPDX expression")
+    if get(value, "protocol") is not UNDEFINED:
+        c.pattern("protocol", get(value, "protocol"), PROTOCOL_VERSION_PATTERN, PROTOCOL_VERSION_MESSAGE)
     capabilities = get(value, "capabilities")
     if not isinstance(capabilities, list):
         c.wrong_type("capabilities", capabilities, "must be a non-empty array")
@@ -85,7 +82,7 @@ def validate_plugin_manifest(value: Any) -> list[Issue]:
                 continue
             cap_id = get(cap, "id")
             if not js.matches(_CAPABILITY_ID, cap_id):
-                pattern(f"{path}.id", cap_id, _CAPABILITY_ID, "must be a dotted lowercase id such as editor.document")
+                c.pattern(f"{path}.id", cap_id, _CAPABILITY_ID, "must be a dotted lowercase id such as editor.document")
             elif cap_id in seen:
                 c.add(f"{path}.id", "unique", "duplicate capability id")
             else:

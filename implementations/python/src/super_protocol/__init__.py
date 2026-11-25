@@ -73,8 +73,24 @@ from .validators import (
     validate_plugin_manifest,
     validate_symbol,
 )
+from .version import (
+    PROTOCOL_FEATURES,
+    PROTOCOL_VERSION,
+    ParsedProtocolFeature,
+    ParsedProtocolVersion,
+    compare_protocol_versions,
+    parse_protocol_feature,
+    parse_protocol_version,
+)
 
 __all__ = [
+    "PROTOCOL_FEATURES",
+    "PROTOCOL_VERSION",
+    "ParsedProtocolFeature",
+    "ParsedProtocolVersion",
+    "compare_protocol_versions",
+    "parse_protocol_feature",
+    "parse_protocol_version",
     "InputCounting",
     "UsageCounting",
     "finish_reason_from_gateway",

@@ -79,6 +79,11 @@ export function bool(add: Add, path: string, v: unknown, message = "must be a bo
 export function arr(add: Add, path: string, v: unknown): void {
   if (!Array.isArray(v)) wrongType(add, path, v, "must be an array");
 }
+/** A string that matches `re`: `type` for a non-string, `format` for one that does not match. */
+export function pattern(add: Add, path: string, v: unknown, re: RegExp, message: string): void {
+  if (typeof v !== "string") wrongType(add, path, v, message);
+  else if (!re.test(v)) add(path, "format", message);
+}
 export function obj(add: Add, path: string, v: unknown, message = "must be an object"): void {
   if (!isObject(v)) wrongType(add, path, v, message);
 }

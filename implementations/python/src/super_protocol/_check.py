@@ -11,6 +11,7 @@ type but not acceptable is the code that says why ("empty", "enum", "range", ...
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from . import _js as js
@@ -98,6 +99,13 @@ class Checker:
             self.wrong_type(path, value, message)
         elif js.js_length(value) > limit:
             self.add(path, "length", message)
+
+    def pattern(self, path: str, value: Any, regex: re.Pattern[str], message: str) -> None:
+        """A string that matches `regex` entirely: "type" for a non-string, "format" for one that does not match."""
+        if not js.is_string(value):
+            self.wrong_type(path, value, message)
+        elif regex.fullmatch(value) is None:
+            self.add(path, "format", message)
 
     def object(self, path: str, value: Any, message: str = "must be an object") -> None:
         if not js.is_object(value):

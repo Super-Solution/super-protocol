@@ -10,9 +10,12 @@ from super_protocol import (
     ISSUE_CODES,
     PLOT_FALLBACK_MESSAGE,
     PLUGIN_TOOL_PRESETS,
+    PROTOCOL_FEATURES,
+    PROTOCOL_VERSION,
     SSEParser,
     StreamFrameTooLarge,
     can_place_card,
+    compare_protocol_versions,
     did_you_mean,
     finish_reason_from_gateway,
     finish_reason_to_gateway,
@@ -26,6 +29,8 @@ from super_protocol import (
     panel_card_kinds,
     parse_card_ref,
     parse_chart_ref,
+    parse_protocol_feature,
+    parse_protocol_version,
     plugin_tool_authority,
     read_host_theme,
     run_stream_outcome,
@@ -82,6 +87,23 @@ class Conformance(unittest.TestCase):
                 return {"error": str(e)}
 
         self.check("mapping", run, 120)
+
+    def test_protocol_version(self) -> None:
+        self.assertEqual(PROTOCOL_VERSION, DATA["protocol"]["version"])
+        self.assertEqual(list(PROTOCOL_FEATURES), DATA["protocol"]["features"])
+
+        def run(c: dict[str, Any]) -> Any:
+            if c["fn"] == "parse":
+                v = parse_protocol_version(c["value"])
+                return None if v is None else {"major": v.major, "minor": v.minor}
+            if c["fn"] == "compare":
+                return compare_protocol_versions(c["a"], c["b"])
+            f = parse_protocol_feature(c["value"])
+            if f is None:
+                return None
+            return {"name": f.name, "major": f.version.major, "minor": f.version.minor}
+
+        self.check("protocol_version", run, 60)
 
     def test_did_you_mean(self) -> None:
         self.check("did_you_mean", lambda c: did_you_mean(c["value"], c["allowed"]), 25)

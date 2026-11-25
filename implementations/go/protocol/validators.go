@@ -82,13 +82,6 @@ func ValidatePluginManifest(value any) []Issue {
 		c.wrongType("", value, "manifest must be an object")
 		return c.issues
 	}
-	pattern := func(path string, v any, re *regexp.Regexp, message string) {
-		if s, ok := asString(v); !ok {
-			c.wrongType(path, v, message)
-		} else if !re.MatchString(s) {
-			c.add(path, CodeFormat, message)
-		}
-	}
 	if v := field(value, "manifestVersion"); !equalsNumber(v, PluginManifestVersion) {
 		message := fmt.Sprintf("must be %d", PluginManifestVersion)
 		if isUndefined(v) {
@@ -97,9 +90,12 @@ func ValidatePluginManifest(value any) []Issue {
 			c.add("manifestVersion", CodeEnum, message)
 		}
 	}
-	pattern("name", field(value, "name"), nameRe, "must be a valid npm package name")
-	pattern("version", field(value, "version"), semverRe, "must be a semver string")
+	c.pattern("name", field(value, "name"), nameRe, "must be a valid npm package name")
+	c.pattern("version", field(value, "version"), semverRe, "must be a semver string")
 	c.filled("license", field(value, "license"), "must be a non-empty SPDX expression")
+	if protocol := field(value, "protocol"); !isUndefined(protocol) {
+		c.pattern("protocol", protocol, protocolVersionRe, protocolMessage)
+	}
 	caps := field(value, "capabilities")
 	if list, isList := caps.([]any); !isList {
 		c.wrongType("capabilities", caps, "must be a non-empty array")
@@ -118,7 +114,7 @@ func ValidatePluginManifest(value any) []Issue {
 			}
 			id := field(cap, "id")
 			if !matches(capabilityIDRe, id) {
-				pattern(path+".id", id, capabilityIDRe, "must be a dotted lowercase id such as editor.document")
+				c.pattern(path+".id", id, capabilityIDRe, "must be a dotted lowercase id such as editor.document")
 			} else if seen[id.(string)] {
 				c.add(path+".id", CodeUnique, "duplicate capability id")
 			} else {

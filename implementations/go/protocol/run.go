@@ -151,6 +151,9 @@ func ValidateRunEvent(e any) []RunEventIssue {
 		if threadID := ev("threadId"); !isUndefined(threadID) {
 			c.text("threadId", threadID)
 		}
+		if protocol := ev("protocol"); !isUndefined(protocol) {
+			c.pattern("protocol", protocol, protocolVersionRe, protocolMessage)
+		}
 	case "run-snapshot":
 		c.parts("parts", ev("parts"))
 		if cards, ok := ev("cards").([]any); !ok {

@@ -15,8 +15,9 @@
  * Transport is not prescribed. Over server-sent events, one event is one frame
  * whose `data` is the event as JSON.
  */
-import { amount, bool, count, isObject, obj, oneOf, str, text, wrongType, type Fields } from "./check.js";
+import { amount, bool, count, isObject, obj, oneOf, pattern, str, text, wrongType, type Fields } from "./check.js";
 import { collector, didYouMean, type Add, type Issue } from "./issue.js";
+import { PROTOCOL_VERSION_PATTERN } from "./version.js";
 
 /** Every run event type, in the order a simple turn tends to produce them. */
 export const RUN_EVENT_TYPES = [
@@ -121,6 +122,8 @@ type RunEventBody =
       mode: RunMode;
       /** Optional: the conversation this run belongs to, for a follower that groups runs. Absent when the host keeps no thread. */
       threadId?: string;
+      /** Optional: the protocol version (`major.minor`, see `version.ts`) the producer of this stream was written against. */
+      protocol?: string;
     }
   /**
    * Everything the run has produced so far. It REPLACES what the follower holds: sent to a follower
@@ -239,6 +242,7 @@ export function validateRunEvent(value: unknown): RunEventIssue[] {
       text(add, "runId", e.runId);
       oneOf(add, "mode", e.mode, RUN_MODES);
       if (e.threadId !== undefined) text(add, "threadId", e.threadId);
+      if (e.protocol !== undefined) pattern(add, "protocol", e.protocol, PROTOCOL_VERSION_PATTERN, "must be a protocol version such as 0.5");
       break;
     case "run-snapshot":
       parts(add, "parts", e.parts);

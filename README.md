@@ -35,6 +35,8 @@ licenses**. This repository is that neutral ground:
   (`conformance/agent-loop-replay.v0.json`, expected values produced by `runAgent`; see [`docs/AGENT-LOOP.md`](docs/AGENT-LOOP.md)).
 - **Issues**: every validator returns all its problems as `{ path, code, message, hint? }`, where `code` is one of a closed
   set of 13 words that is the same in all three languages (see [`docs/ISSUES.md`](docs/ISSUES.md)).
+- **Protocol version and features**: `PROTOCOL_VERSION`, `PROTOCOL_FEATURES` and an optional `protocol` field on a plugin
+  manifest and on `run-start`, so data says what it was written against (see [`docs/VERSIONING.md`](docs/VERSIONING.md)).
 - **Card references**: the `ref:` link that lets text in a message point into a card, and the `ref()` method a card
   answers it with (see [`docs/CARD-REFS.md`](docs/CARD-REFS.md)).
 - **Card placement**: the same card shown inline in a conversation, in a host's side panel or inside a

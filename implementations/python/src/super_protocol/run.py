@@ -15,6 +15,7 @@ from . import _js as js
 from ._check import Checker
 from ._js import UNDEFINED, get
 from .issue import ManifestIssue, did_you_mean
+from .version import PROTOCOL_VERSION_MESSAGE, PROTOCOL_VERSION_PATTERN
 
 RUN_EVENT_TYPES = (
     "run-start",
@@ -130,6 +131,8 @@ def validate_run_event(value: Any) -> list[RunEventIssue]:
         c.one_of("mode", field("mode"), RUN_MODES)
         if field("threadId") is not UNDEFINED:
             c.text("threadId", field("threadId"))
+        if field("protocol") is not UNDEFINED:
+            c.pattern("protocol", field("protocol"), PROTOCOL_VERSION_PATTERN, PROTOCOL_VERSION_MESSAGE)
     elif kind == "run-snapshot":
         c.parts("parts", field("parts"))
         cards = field("cards")

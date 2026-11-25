@@ -27,6 +27,17 @@ type fixtures struct {
 			Error string `json:"error"`
 		} `json:"expect"`
 	} `json:"mapping"`
+	Protocol struct {
+		Version  string   `json:"version"`
+		Features []string `json:"features"`
+	} `json:"protocol"`
+	ProtocolVersion []struct {
+		Fn     string `json:"fn"`
+		Value  any    `json:"value"`
+		A      any    `json:"a"`
+		B      any    `json:"b"`
+		Expect any    `json:"expect"`
+	} `json:"protocol_version"`
 	DidYouMean []struct {
 		Value   any      `json:"value"`
 		Allowed []string `json:"allowed"`
@@ -155,6 +166,38 @@ func load(t testing.TB) fixtures {
 func TestIssueCodes(t *testing.T) {
 	if want := load(t).IssueCodes.Codes; !reflect.DeepEqual(IssueCodes, want) {
 		t.Errorf("IssueCodes = %v, want %v", IssueCodes, want)
+	}
+}
+
+func TestProtocolVersion(t *testing.T) {
+	f := load(t)
+	if ProtocolVersion != f.Protocol.Version || !reflect.DeepEqual(ProtocolFeatures, f.Protocol.Features) {
+		t.Errorf("protocol %s %v, want %s %v", ProtocolVersion, ProtocolFeatures, f.Protocol.Version, f.Protocol.Features)
+	}
+	if len(f.ProtocolVersion) < 60 {
+		t.Fatalf("only %d cases", len(f.ProtocolVersion))
+	}
+	for i, c := range f.ProtocolVersion {
+		var got any
+		switch c.Fn {
+		case "parse":
+			if major, minor, ok := ParseProtocolVersion(c.Value); ok {
+				got = map[string]any{"major": float64(major), "minor": float64(minor)}
+			}
+		case "compare":
+			if order, ok := CompareProtocolVersions(c.A, c.B); ok {
+				got = float64(order)
+			}
+		case "feature":
+			if name, major, minor, ok := ParseProtocolFeature(c.Value); ok {
+				got = map[string]any{"name": name, "major": float64(major), "minor": float64(minor)}
+			}
+		default:
+			t.Fatalf("protocol_version[%d]: unknown fn %q", i, c.Fn)
+		}
+		if !reflect.DeepEqual(got, c.Expect) {
+			t.Errorf("protocol_version[%d] %s %v %v %v: %v, want %v", i, c.Fn, c.Value, c.A, c.B, got, c.Expect)
+		}
 	}
 }
 

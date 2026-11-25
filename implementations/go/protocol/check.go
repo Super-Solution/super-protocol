@@ -2,7 +2,10 @@
 
 package protocol
 
-import "strings"
+import (
+	"regexp"
+	"strings"
+)
 
 // The small checks every validator in this package is built from: a validator reports every problem it finds
 // through add(path, code, message), and these are the common shapes of one problem (a required text, a value from a
@@ -113,6 +116,15 @@ func (c *checker) short(path string, v any, limit int, message string) {
 		c.wrongType(path, v, message)
 	} else if jsLength(s) > limit {
 		c.add(path, CodeLength, message)
+	}
+}
+
+// pattern is a string that matches re: "type" for a non-string, "format" for one that does not match.
+func (c *checker) pattern(path string, v any, re *regexp.Regexp, message string) {
+	if s, ok := asString(v); !ok {
+		c.wrongType(path, v, message)
+	} else if !re.MatchString(s) {
+		c.add(path, CodeFormat, message)
 	}
 }
 

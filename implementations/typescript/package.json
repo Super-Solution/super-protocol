@@ -83,6 +83,11 @@
       "types": "./dist/mapping.d.ts",
       "import": "./dist/mapping.js",
       "default": "./dist/mapping.js"
+    },
+    "./version": {
+      "types": "./dist/version.d.ts",
+      "import": "./dist/version.js",
+      "default": "./dist/version.js"
     }
   },
   "files": [
