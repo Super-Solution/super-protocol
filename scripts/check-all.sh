@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Local gate: every implementation against the shared conformance data. Hosted CI is not used.
 # Python checks run only when `python3 -m venv` works; set SKIP_PYTHON=1 to skip them, SKIP_RUST=1 to skip the Rust crate.
-# Set SUPER_CHAT_DIR to a Super Chat checkout to also check conformance/tool-repair.v0.json against its repair.ts.
+# Set SUPER_CHAT_DIR to a Super Chat checkout (core built) to also check conformance/tool-repair.v0.json against its repair.ts
+# and conformance/agent-loop-replay.v0.json against what its runAgent does.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -24,6 +25,7 @@ node scripts/export-agent-loop.mjs --check
 # The repair cases are generated from Super Chat's repair.ts: checked only when a Super Chat checkout is known.
 if [ -n "${SUPER_CHAT_DIR:-}" ]; then
   node scripts/export-tool-repair.mjs --check
+  node scripts/export-agent-replay.mjs --check
 fi
 
 echo "== go"
@@ -31,7 +33,7 @@ echo "== go"
 
 if [ "${SKIP_RUST:-0}" != "1" ]; then
   echo "== rust (agent loop)"
-  (cd implementations/rust-agent-loop && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test)
+  (cd implementations/rust-agent-loop && cargo fmt --check && cargo clippy --all-targets --features http -- -D warnings && cargo test --features http)
 fi
 
 if [ "${SKIP_PYTHON:-0}" != "1" ]; then

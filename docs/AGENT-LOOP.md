@@ -6,7 +6,7 @@ transcripts that any implementation can be run against: `conformance/agent-loop.
 is not exported from `@supersolutions/super-protocol`, the Rust crate has `publish = false`, and the shapes may
 still change. Nothing in `protocol.v1.json` depends on this page.
 
-It exists so that Super Chat's TypeScript `runAgent` and a Rust loop can be shown to agree, and so that a person
+It exists so that Super Chat's TypeScript `runAgent` and a Rust loop can be shown to agree (section 10 shows it on whole runs, not only on decisions), and so that a person
 who reads only the Rust or only the TypeScript knows what the other one must do.
 
 | Path | What |
@@ -15,7 +15,8 @@ who reads only the Rust or only the TypeScript knows what the other one must do.
 | `scripts/agent-loop/cases.mjs`, `conformance/agent-loop.v0.json` | the transcripts: written by hand; `node scripts/export-agent-loop.mjs` builds the JSON, `--check` verifies it |
 | `scripts/export-tool-repair.mjs`, `conformance/tool-repair.v0.json` | the repair cases: generated from Super Chat's `repair.ts` (`SUPER_CHAT_DIR=... node scripts/export-tool-repair.mjs`) |
 | `implementations/typescript/src/agent-loop/` | the TypeScript reference machine and the whole-stream rules of [RUN-EVENTS](RUN-EVENTS.md) as code |
-| `implementations/rust-agent-loop/` | the Rust crate `super-agent-loop`: the machine and the repair port |
+| `implementations/rust-agent-loop/` | the Rust crate `super-agent-loop`: the machine, the repair port, a driver, one provider (OpenAI Chat Completions) and an HTTP transport |
+| `scripts/agent-loop/replay-scenarios.mjs`, `scripts/export-agent-replay.mjs`, `conformance/agent-loop-replay.v0.json` | the shadow replay (section 10): whole runs from wire bytes, with what Super Chat's `runAgent` did with them. Generated: `SUPER_CHAT_DIR=... node scripts/export-agent-replay.mjs` |
 | Super Chat `packages/core/src/conformance/` | copies of both files, run against the real `runAgent` (events only) |
 
 ## 1. The loop is a pure function of what it is told
@@ -183,9 +184,9 @@ runs the other cases and compares events only.
 
 Deltas of arbitrary size and `reasoning-delta`; `tool-call-input-delta` previews and partial-JSON parsing;
 background mode (`job-*`); `metering` records (prices and clocks belong to the host); `context-built`; card
-production by tools (`card`, `card-updated`); skills that unlock tools mid-run; `explainMissingInput`; per-tool
+production by tools (`card`, `card-updated`); skills that unlock tools mid-run; per-tool
 timeouts; the history *content* beyond the two messages above (card stripping, compaction); sub-agents; the MCP
-client; provider adapters. Each is a later, separate piece, and several belong to the tool or driver layer rather
+client; every provider but OpenAI Chat Completions (section 10). Each is a later, separate piece, and several belong to the tool or driver layer rather
 than the machine. The README of `implementations/rust-agent-loop` lists what a Rust loop would still have to build around the machine,
 and `docs/60-reference/agent-harness-review-2026-11-24.md` in super-dev-docs carries the go/no-go.
 
@@ -195,3 +196,47 @@ Change the cases first (`scripts/agent-loop/cases.mjs`), regenerate (`node scrip
 JSON diff, then make every implementation pass: the TypeScript machine, the Rust crate, and Super Chat's copy of
 the file (copy it over; its tests fail until `runAgent` agrees or the change is dropped). `scripts/check-all.sh`
 runs the first three and checks the file is reproducible.
+
+## 10. Shadow replay: the machine is not where a loop goes wrong
+
+The cases of section 7 feed the machine what a driver would have fed it. Most of what breaks in a real agent loop is not
+there: it is in how bytes become a model result (SSE framing, tool-call fragments that interleave by index), how a history
+becomes a request, how an HTTP failure is read, what a tool's failure looks like to the model. A second implementation can
+pass every case above and still disagree with the first on all of that.
+
+`conformance/agent-loop-replay.v0.json` pins it on whole runs. A **scenario** scripts only the outside world, by hand:
+the bytes of each model call (an SSE body cut where the scenario cuts it, or an HTTP error), what each tool does and how
+long it takes, what the person answers. Then Super Chat's real `runAgent`, with its real OpenAI Chat Completions adapter, is
+run over it, and what it did is written next to the scenario: `expected.events` (the run's events) and `expected.requests`
+(the path and exact JSON body of every request it sent, key order included). So no expected value is typed by the author of
+the other implementation. An implementation passes a scenario when the same bytes give the same events and the same
+request bodies, byte for byte.
+
+- Normalised before comparing: `context-built`, `metering` and `tool-call-input-delta` events are dropped (host and UI
+  concerns); `runId` is fixed; `tool-result.ms` is compared as present, not as a number; adjacent `text-delta`s are joined
+  (the loop reports a text part, a UI may see it in pieces); the step-limit message is its `notice` part.
+- 31 scenarios: text, one and several tool calls (fragments interleaved by index, name and id on later fragments, no id, text
+  before calls), repaired and unrepairable arguments, an unknown tool, a router-prefixed tool name, thrown errors read as
+  `timeout`/`network`, tool output in odd key order and as a plain string, the three approval outcomes, the step limit,
+  `afterTool`, usage with cached and reasoning tokens, a stream with no finish reason, frames after `[DONE]`, SSE framing
+  (CRLF, comments, multi-line `data:`, malformed frame, frames cut mid-line, a character cut between reads), HTTP 401, 429
+  (text body), 400 (context length, content filter) and 500 on the second step, a history with earlier turns and an
+  unanswered call, and tools registered out of order.
+- Not in it: images, files, audio, reasoning content, provider-native tools, the Responses dialect, Anthropic, retries
+  and their back-off, cancellation (a signal is a driver matter, tested in the crate), background jobs.
+
+Differences between the two loops that only this found (each is now a scenario):
+
+1. Tools are declared to the model in **`localeCompare` order**, not byte order (`_` before digits before letters, `a`
+   before `B`). A host that sorts by bytes sends a different prefix and never hits the provider's prompt cache.
+2. A request body is **JSON.stringify's bytes**, so key order is part of the contract (`serde_json` needs
+   `preserve_order`); a tool result in history is that string, or the output itself when it is a string.
+3. A tool that throws is not `{ error }`: it carries a `kind` read from its words (`timeout`, `network`, `unknown`), and a
+   failed call that left out required arguments also carries `missing` and `expected`. The model reads these.
+4. A router-prefixed name (`default_api:echo`) is **not** resolved by the loop: the call is `not-found`. `normalizeToolName`
+   is for hosts that choose to use it before the call.
+5. A call with no `id` is named `call_<index>`; the name may arrive in pieces; only the first fragment of an index may carry
+   the id.
+
+What the replay does not make equal: floating-point text beyond what both print the same (`1e21`), and the byte order of
+object keys in a *tool's own* output when a host builds it from an unordered map.

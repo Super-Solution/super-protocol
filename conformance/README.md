@@ -8,6 +8,7 @@ cases exactly, error messages included.
 | --- | --- |
 | `protocol.v1.json` | `plugin_manifest` (issue lists), `editor_card`, `chart_card` and `plot_card` (result objects), `terminal_event`, `run_event` (issue lists), `run_event_type` (whether a type is known and whether it ends a run), `run_stream_outcome` (what a stopped stream says about its run), `sse` (hex-encoded byte chunks, optional frame limit, expected frames or the error code), and `plot_fallback_message` (the text a user sees in place of a plot that cannot be drawn) |
 | `agent-loop.v0.json` | transcripts of the agent loop: `(input, events, effects)` per step, 31 cases. Written by hand from [`docs/AGENT-LOOP.md`](../docs/AGENT-LOOP.md); `node scripts/export-agent-loop.mjs` builds it from `scripts/agent-loop/cases.mjs` |
+| `agent-loop-replay.v0.json` | the **shadow replay**: 31 whole runs described by their wire bytes (the SSE body of every model call, what each tool does, what the person answers) with what Super Chat's real `runAgent` and OpenAI Chat Completions adapter did with them: the run's events and the exact body of every request. **Generated**: `SUPER_CHAT_DIR=... node scripts/export-agent-replay.mjs` |
 | `tool-repair.v0.json` | what `repairToolArguments` and `normalizeToolName` return for 769 malformed model outputs. **Generated from Super Chat's `repair.ts`**: `SUPER_CHAT_DIR=... node scripts/export-tool-repair.mjs` |
 
 The agent-loop files are run by `implementations/typescript/src/agent-loop` (the reference machine), `implementations/rust-agent-loop` and

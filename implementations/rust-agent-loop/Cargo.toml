@@ -8,5 +8,12 @@ description = "The agent loop as a sans-IO state machine, plus tool-argument rep
 license = "Apache-2.0"
 repository = "https://github.com/Super-Solution/super-protocol"
 
+[features]
+# A Transport over HTTP(S) with `ureq`: the one place this crate touches a socket. Off by default, so the machine, the
+# driver and the provider build with `serde_json` alone.
+http = ["dep:ureq"]
+
 [dependencies]
-serde_json = "1"
+# `preserve_order`: JSON.stringify writes keys as they were inserted and the request bodies must match it byte for byte.
+serde_json = { version = "1", features = ["preserve_order"] }
+ureq = { version = "2", optional = true, default-features = false, features = ["tls"] }
