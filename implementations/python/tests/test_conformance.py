@@ -14,18 +14,22 @@ from super_protocol import (
     StreamFrameTooLarge,
     can_place_card,
     did_you_mean,
+    finish_reason_from_gateway,
+    finish_reason_to_gateway,
     format_card_ref,
     inference_stream_outcome,
     is_card_placement,
     is_run_event_type,
     is_run_terminal_event,
     is_terminal_event,
+    meters_from_run_usage,
     panel_card_kinds,
     parse_card_ref,
     parse_chart_ref,
     plugin_tool_authority,
     read_host_theme,
     run_stream_outcome,
+    run_usage_from_meters,
     theme_variables,
     validate_chart_card_spec,
     validate_chat_plugin_data,
@@ -63,6 +67,21 @@ class Conformance(unittest.TestCase):
 
     def test_issue_codes(self) -> None:
         self.assertEqual(list(ISSUE_CODES), DATA["issue_codes"]["codes"])
+
+    def test_mapping(self) -> None:
+        def run(c: dict[str, Any]) -> dict[str, Any]:
+            try:
+                if c["fn"] == "finish_from_gateway":
+                    return {"value": finish_reason_from_gateway(c["value"])}
+                if c["fn"] == "finish_to_gateway":
+                    return {"value": finish_reason_to_gateway(c["value"])}
+                if c["fn"] == "usage_from_meters":
+                    return {"value": run_usage_from_meters(c["meters"], c["counting"])}
+                return {"value": meters_from_run_usage(c["usage"], c["counting"])}
+            except ValueError as e:
+                return {"error": str(e)}
+
+        self.check("mapping", run, 120)
 
     def test_did_you_mean(self) -> None:
         self.check("did_you_mean", lambda c: did_you_mean(c["value"], c["allowed"]), 25)

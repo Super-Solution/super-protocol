@@ -148,6 +148,9 @@ func ValidateRunEvent(e any) []RunEventIssue {
 	case "run-start":
 		c.text("runId", ev("runId"))
 		c.oneOf("mode", ev("mode"), RunModes)
+		if threadID := ev("threadId"); !isUndefined(threadID) {
+			c.text("threadId", threadID)
+		}
 	case "run-snapshot":
 		c.parts("parts", ev("parts"))
 		if cards, ok := ev("cards").([]any); !ok {
@@ -173,6 +176,9 @@ func ValidateRunEvent(e any) []RunEventIssue {
 		c.count("step", ev("step"))
 	case "text-delta", "reasoning-delta":
 		c.str("delta", ev("delta"))
+		if id := ev("id"); !isUndefined(id) {
+			c.text("id", id)
+		}
 	case "tool-call-input-delta":
 		c.text("callId", ev("callId"))
 		c.text("name", ev("name"))
@@ -227,6 +233,10 @@ func ValidateRunEvent(e any) []RunEventIssue {
 		} else {
 			c.add("type", CodeEnum, "unknown run event type")
 		}
+		return c.issues
+	}
+	if seq := ev("seq"); !isUndefined(seq) {
+		c.count("seq", seq)
 	}
 	return c.issues
 }

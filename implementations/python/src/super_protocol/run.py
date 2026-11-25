@@ -128,6 +128,8 @@ def validate_run_event(value: Any) -> list[RunEventIssue]:
     if kind == "run-start":
         c.text("runId", field("runId"))
         c.one_of("mode", field("mode"), RUN_MODES)
+        if field("threadId") is not UNDEFINED:
+            c.text("threadId", field("threadId"))
     elif kind == "run-snapshot":
         c.parts("parts", field("parts"))
         cards = field("cards")
@@ -151,6 +153,8 @@ def validate_run_event(value: Any) -> list[RunEventIssue]:
         c.count("step", field("step"))
     elif kind in ("text-delta", "reasoning-delta"):
         c.string("delta", field("delta"))
+        if field("id") is not UNDEFINED:
+            c.text("id", field("id"))
     elif kind == "tool-call-input-delta":
         c.text("callId", field("callId"))
         c.text("name", field("name"))
@@ -201,6 +205,9 @@ def validate_run_event(value: Any) -> list[RunEventIssue]:
         c.boolean("recoverable", field("recoverable"))
     else:
         c.add("type", "enum", "unknown run event type", did_you_mean(kind, RUN_EVENT_TYPES))
+        return c.issues
+    if field("seq") is not UNDEFINED:
+        c.count("seq", field("seq"))
     return c.issues
 
 

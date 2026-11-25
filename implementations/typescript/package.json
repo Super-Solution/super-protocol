@@ -78,6 +78,11 @@
       "types": "./dist/theme.d.ts",
       "import": "./dist/theme.js",
       "default": "./dist/theme.js"
+    },
+    "./mapping": {
+      "types": "./dist/mapping.d.ts",
+      "import": "./dist/mapping.js",
+      "default": "./dist/mapping.js"
     }
   },
   "files": [

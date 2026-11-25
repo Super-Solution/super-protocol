@@ -8,6 +8,10 @@ import {
   ISSUE_CODES,
   PLUGIN_TOOL_PRESETS,
   didYouMean,
+  finishReasonFromGateway,
+  finishReasonToGateway,
+  metersFromRunUsage,
+  runUsageFromMeters,
   canPlaceCard,
   inferenceStreamOutcome,
   panelCardKinds,
@@ -62,6 +66,27 @@ describe("conformance data", () => {
     }
     // Every code in the vocabulary is exercised by the data, so a port cannot leave one out unnoticed.
     expect([...ISSUE_CODES].filter((code) => !seen.has(code))).toEqual([]);
+  });
+  it("mapping", () => {
+    expect(data.mapping.length).toBeGreaterThanOrEqual(120);
+    const run = (fn: () => unknown) => {
+      try {
+        return { value: fn() ?? null };
+      } catch (e) {
+        return { error: (e as Error).message };
+      }
+    };
+    for (const c of data.mapping) {
+      const got =
+        c.fn === "finish_from_gateway"
+          ? run(() => finishReasonFromGateway(c.value))
+          : c.fn === "finish_to_gateway"
+            ? run(() => finishReasonToGateway(c.value))
+            : c.fn === "usage_from_meters"
+              ? run(() => runUsageFromMeters(c.meters, c.counting))
+              : run(() => metersFromRunUsage(c.usage, c.counting));
+      expect(got, JSON.stringify(c)).toEqual(c.expect);
+    }
   });
   it("did you mean", () => {
     expect(data.did_you_mean.length).toBeGreaterThanOrEqual(25);

@@ -106,8 +106,22 @@ export type RunJobHandle = { provider: string; id: string } & Record<string, unk
  * `tool-call`, then its `card` / `awaiting-user` / `user-responded`, then exactly one `tool-result`,
  * failures included. All of a step's results arrive before the next `step-start`.
  */
-export type RunEvent =
-  | { type: "run-start"; runId: string; mode: RunMode }
+export type RunEvent = RunEventBody & {
+  /**
+   * Optional, on any event: a counter that rises by one with each event of a run, so a follower can see that it missed
+   * some. A producer that numbers its events numbers all of them, from 0.
+   */
+  seq?: number;
+};
+
+type RunEventBody =
+  | {
+      type: "run-start";
+      runId: string;
+      mode: RunMode;
+      /** Optional: the conversation this run belongs to, for a follower that groups runs. Absent when the host keeps no thread. */
+      threadId?: string;
+    }
   /**
    * Everything the run has produced so far. It REPLACES what the follower holds: sent to a follower
    * that joins part-way or lost part of the stream. A card still waiting is announced again with
@@ -117,8 +131,9 @@ export type RunEvent =
   /** What was sent to the model and why. Optional; inspectors read it. */
   | { type: "context-built"; trace: Record<string, unknown>; system: string; toolNames: string[] }
   | { type: "step-start"; step: number }
-  | { type: "text-delta"; delta: string }
-  | { type: "reasoning-delta"; delta: string }
+  /** `id`, when given, names the message the text belongs to; without one a follower uses `${runId}:${step}`. */
+  | { type: "text-delta"; delta: string; id?: string }
+  | { type: "reasoning-delta"; delta: string; id?: string }
   /** A preview of a tool call's arguments while the model is still writing them. Never stored. */
   | {
       type: "tool-call-input-delta";
@@ -223,6 +238,7 @@ export function validateRunEvent(value: unknown): RunEventIssue[] {
     case "run-start":
       text(add, "runId", e.runId);
       oneOf(add, "mode", e.mode, RUN_MODES);
+      if (e.threadId !== undefined) text(add, "threadId", e.threadId);
       break;
     case "run-snapshot":
       parts(add, "parts", e.parts);
@@ -243,6 +259,7 @@ export function validateRunEvent(value: unknown): RunEventIssue[] {
     case "text-delta":
     case "reasoning-delta":
       str(add, "delta", e.delta);
+      if (e.id !== undefined) text(add, "id", e.id);
       break;
     case "tool-call-input-delta":
       text(add, "callId", e.callId);
@@ -309,7 +326,9 @@ export function validateRunEvent(value: unknown): RunEventIssue[] {
       break;
     default:
       add("type", "enum", "unknown run event type", didYouMean(e.type, RUN_EVENT_TYPES));
+      return issues;
   }
+  if (e.seq !== undefined) count(add, "seq", e.seq);
   return issues;
 }
 

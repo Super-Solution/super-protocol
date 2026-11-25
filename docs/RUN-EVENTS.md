@@ -13,16 +13,16 @@ run-start → step-start → text-delta … → usage → step-finish → run-fi
 
 ## The events
 
-Every event is a JSON object with a `type`. Fields marked `?` are optional.
+Every event is a JSON object with a `type`. Fields marked `?` are optional. Any event may also carry `seq?` (below).
 
 | `type` | Fields | Means |
 | --- | --- | --- |
-| `run-start` | `runId`, `mode` (`stream`, `sync`, `background`) | A run began. |
+| `run-start` | `runId`, `mode` (`stream`, `sync`, `background`), `threadId?` | A run began. `threadId` names the conversation it belongs to. |
 | `run-snapshot` | `parts[]`, `cards[]`, `usage?`, `steps?` | Everything the run has produced so far. **Replaces** what the follower holds. |
 | `context-built` | `trace`, `system`, `toolNames[]` | What was sent to the model and why. Optional; inspectors read it. |
 | `step-start` | `step` | A model call began. Steps count from 0. |
-| `text-delta` | `delta` | More of the answer. |
-| `reasoning-delta` | `delta` | More of the model's reasoning. |
+| `text-delta` | `delta`, `id?` | More of the answer. |
+| `reasoning-delta` | `delta`, `id?` | More of the model's reasoning. |
 | `tool-call-input-delta` | `callId`, `name`, `partialInput`, `partialCard?`, `loading?` | A preview of a tool call's arguments while the model writes them. Never stored. |
 | `tool-call` | `callId`, `name`, `input`, `repaired?`, `loading?` | The model called a tool. |
 | `awaiting-user` | `callId`, `card` | The run waits for the person to answer this card. |
@@ -54,6 +54,66 @@ Shared shapes:
 
 The protocol does not look inside tool `input` and `output`, `error`, `trace`, `record`, `loading`, a card spec
 beyond `kind` or a content part beyond `type`. They belong to the tool, the card kind or the host.
+
+## Optional fields that let another protocol map a run without guessing
+
+All three are optional: a producer may leave them out, `validateRunEvent` accepts an event with or without them, and
+checks their type only when they are there (`threadId` and `id` a non-empty string, `seq` a non-negative integer).
+
+- **`seq`** (any event): a counter that rises by one with each event of a run, from 0. A follower that sees a gap knows
+  it missed events and can ask for a `run-snapshot`. A producer that numbers its events numbers all of them.
+- **`threadId`** (`run-start`): the conversation the run belongs to, for a follower that groups runs. A host that keeps
+  no thread leaves it out; an adapter that needs one (AG-UI's `RUN_STARTED` has one) then makes one up from the host's
+  own id.
+- **`id`** (`text-delta`, `reasoning-delta`): the message the text belongs to. Without one, a follower and every adapter
+  use `${runId}:${step}`, so the same events always give the same ids.
+
+## The `error` payload
+
+`error.error` is `unknown` and the validator does not look inside it. Producers **should** send
+`{ message: string, code?: string, kind?: string }`: `JSON.stringify` of a thrown `Error` drops its message, and every
+protocol that reports a failure to a person (AG-UI's `RUN_ERROR`, the AI SDK's `error` chunk) wants a sentence. Making
+the validator require it would reject producers that send a plain string today, so it stays advice for now.
+
+## The same things under the gateway's names
+
+`router.ts` (the inference gateway) and these events grew separately, so one idea is spelled two ways. The conversions
+are pure functions in `@supersolutions/super-protocol/mapping` (and `FinishReasonFromGateway`, `RunUsageFromMeters`, ...
+in Go; `finish_reason_from_gateway`, `run_usage_from_meters`, ... in Python). Nothing renames a field on either side.
+
+| Idea | Gateway | Run | Conversion |
+| --- | --- | --- | --- |
+| Why it stopped | `finish_reason`: `stop`, `length`, `tool_calls` | `finishReason`: `stop`, `length`, `tool-calls`, `content-filter`, `cancelled`, `error`, `unknown` | `finishReasonFromGateway` gives `unknown` for a value it does not know or that is absent. `finishReasonToGateway` gives `null` for `content-filter`, `cancelled`, `error` and `unknown`: the gateway has no word for them and the function does not invent one. |
+| A tool call's id | `id` | `callId` | The same string. |
+| Token counts | `{ input, cached, cache_write, output }` | `{ inputTokens, cachedInputTokens, outputTokens, ... }` | `runUsageFromMeters`, `metersFromRunUsage`: see below. |
+
+### Does `input` include the cached tokens? Not decided
+
+Two readings are in use, and the protocol has not said which one `Usage.input` and `RunUsage.inputTokens` mean:
+
+- **includes-cached**: `input` is everything the model read, tokens read from or written to the cache included.
+  OpenTelemetry's GenAI conventions define `gen_ai.usage.input_tokens` this way, and so do OpenAI-style APIs.
+- **excludes-cached**: `input` is only the tokens that were neither read from nor written to the cache, and the cached
+  ones are reported beside it. Gateways that pass through Anthropic's Messages API usage report it this way, so on a
+  heavily cached turn `input` can legitimately be 1.
+
+Reading one as the other silently under- or over-states the tokens, so the decision belongs to the owner and **the
+conversion functions take the reading of each side as an argument**: `{ meters, run }`, each `"includes-cached"` or
+`"excludes-cached"`. They never pick one. With the same numbers the two readings differ like this
+(`input 100, cached 30, cache_write 10`):
+
+| `meters` reads | `run` reads | `inputTokens` |
+| --- | --- | --- |
+| includes-cached | includes-cached | 100 |
+| includes-cached | excludes-cached | 60 |
+| excludes-cached | includes-cached | 140 |
+| excludes-cached | excludes-cached | 100 |
+
+What is lost: `RunUsage` has no `cache_write`, so going to a run it is dropped (or stays inside `inputTokens` when the
+run includes cached tokens) and coming back it is 0; `images`, `video_ms`, `audio_ms` and `tasks` have no run
+counterpart; `reasoningTokens` and `totalTokens` have no meter. A function **refuses** instead of guessing: it throws
+(Go returns an error) when a count is missing or negative, or when an "includes-cached" `input` is smaller than the
+cached tokens (so it cannot include them). `conformance/protocol.v1.json` pins it as `mapping`.
 
 ## Rules
 

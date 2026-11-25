@@ -16,6 +16,17 @@ type fixtures struct {
 	IssueCodes struct {
 		Codes []string `json:"codes"`
 	} `json:"issue_codes"`
+	Mapping []struct {
+		Fn       string        `json:"fn"`
+		Value    any           `json:"value"`
+		Meters   any           `json:"meters"`
+		Usage    any           `json:"usage"`
+		Counting UsageCounting `json:"counting"`
+		Expect   struct {
+			Value any    `json:"value"`
+			Error string `json:"error"`
+		} `json:"expect"`
+	} `json:"mapping"`
 	DidYouMean []struct {
 		Value   any      `json:"value"`
 		Allowed []string `json:"allowed"`
@@ -144,6 +155,41 @@ func load(t testing.TB) fixtures {
 func TestIssueCodes(t *testing.T) {
 	if want := load(t).IssueCodes.Codes; !reflect.DeepEqual(IssueCodes, want) {
 		t.Errorf("IssueCodes = %v, want %v", IssueCodes, want)
+	}
+}
+
+func TestMapping(t *testing.T) {
+	f := load(t)
+	if len(f.Mapping) < 120 {
+		t.Fatalf("only %d cases", len(f.Mapping))
+	}
+	for i, c := range f.Mapping {
+		var got any
+		var err error
+		switch c.Fn {
+		case "finish_from_gateway":
+			got = FinishReasonFromGateway(c.Value)
+		case "finish_to_gateway":
+			if word, ok := FinishReasonToGateway(c.Value); ok {
+				got = word
+			}
+		case "usage_from_meters":
+			got, err = RunUsageFromMeters(c.Meters, c.Counting)
+		case "meters_from_usage":
+			got, err = MetersFromRunUsage(c.Usage, c.Counting)
+		default:
+			t.Fatalf("mapping[%d]: unknown fn %q", i, c.Fn)
+		}
+		switch {
+		case c.Expect.Error != "":
+			if err == nil || err.Error() != c.Expect.Error {
+				t.Errorf("mapping[%d] %s: error %v, want %q", i, c.Fn, err, c.Expect.Error)
+			}
+		case err != nil:
+			t.Errorf("mapping[%d] %s: %v", i, c.Fn, err)
+		case !reflect.DeepEqual(got, c.Expect.Value):
+			t.Errorf("mapping[%d] %s %v: %v, want %v", i, c.Fn, c.Value, got, c.Expect.Value)
+		}
 	}
 }
 

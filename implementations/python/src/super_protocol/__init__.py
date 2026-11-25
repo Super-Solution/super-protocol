@@ -9,6 +9,14 @@ from .chat_plugin import (
     validate_chat_plugin_data,
 )
 from .issue import ISSUE_CODES, Issue, ManifestIssue, did_you_mean
+from .mapping import (
+    InputCounting,
+    UsageCounting,
+    finish_reason_from_gateway,
+    finish_reason_to_gateway,
+    meters_from_run_usage,
+    run_usage_from_meters,
+)
 from .placement import CARD_PLACEMENTS, can_place_card, is_card_placement
 from .ref import CARD_REF_LIMITS, CARD_REF_SCHEME, CardRef, format_card_ref, parse_card_ref, parse_chart_ref
 from .router import (
@@ -67,6 +75,12 @@ from .validators import (
 )
 
 __all__ = [
+    "InputCounting",
+    "UsageCounting",
+    "finish_reason_from_gateway",
+    "finish_reason_to_gateway",
+    "meters_from_run_usage",
+    "run_usage_from_meters",
     "ISSUE_CODES",
     "Issue",
     "did_you_mean",
