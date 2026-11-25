@@ -1,0 +1,12 @@
+[package]
+name = "super-agent-loop"
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.89"
+publish = false
+description = "The agent loop as a sans-IO state machine, plus tool-argument repair, checked against the shared conformance data of Super Protocol."
+license = "Apache-2.0"
+repository = "https://github.com/Super-Solution/super-protocol"
+
+[dependencies]
+serde_json = "1"
