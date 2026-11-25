@@ -2,10 +2,7 @@
 
 package protocol
 
-import (
-	"fmt"
-	"strings"
-)
+import "fmt"
 
 // Run events: what an agent turn reports while it runs, wherever the loop lives. A server written
 // in Go checks what it sends with ValidateRunEvent, and anything that follows a stream asks
@@ -46,52 +43,7 @@ const (
 	RunStreamInterrupted RunStreamOutcome = "interrupted"
 )
 
-type runChecker struct{ issues []RunEventIssue }
-
-func (c *runChecker) add(path, message string) {
-	c.issues = append(c.issues, RunEventIssue{Path: path, Message: message})
-}
-
-func isCount(v any) bool  { return isInteger(v) && v.(float64) >= 0 }
-func isAmount(v any) bool { return finite(v) && v.(float64) >= 0 }
-
-func (c *runChecker) text(path string, v any) {
-	if s, ok := asString(v); !ok || s == "" {
-		c.add(path, "must be a non-empty string")
-	}
-}
-
-func (c *runChecker) oneOf(path string, v any, allowed []string) {
-	if s, ok := asString(v); !ok || !contains(allowed, s) {
-		c.add(path, "must be one of "+strings.Join(allowed, ", "))
-	}
-}
-
-func (c *runChecker) count(path string, v any) {
-	if !isCount(v) {
-		c.add(path, "must be a non-negative integer")
-	}
-}
-
-func (c *runChecker) object(path string, v any) {
-	if !isObject(v) {
-		c.add(path, "must be an object")
-	}
-}
-
-func (c *runChecker) str(path string, v any) {
-	if !isString(v) {
-		c.add(path, "must be a string")
-	}
-}
-
-func (c *runChecker) boolean(path string, v any) {
-	if _, ok := v.(bool); !ok {
-		c.add(path, "must be a boolean")
-	}
-}
-
-func (c *runChecker) usage(path string, v any) {
+func (c *checker) usage(path string, v any) {
 	if !isObject(v) {
 		c.add(path, "must be an object")
 		return
@@ -103,7 +55,7 @@ func (c *runChecker) usage(path string, v any) {
 	}
 }
 
-func (c *runChecker) spec(path string, v any) {
+func (c *checker) spec(path string, v any) {
 	if !isObject(v) {
 		c.add(path, "must be an object")
 		return
@@ -112,7 +64,7 @@ func (c *runChecker) spec(path string, v any) {
 	c.text(path+".kind", kind)
 }
 
-func (c *runChecker) action(path string, v any) {
+func (c *checker) action(path string, v any) {
 	if !isObject(v) {
 		c.add(path, "must be an object")
 		return
@@ -131,7 +83,7 @@ func (c *runChecker) action(path string, v any) {
 	}
 }
 
-func (c *runChecker) card(path string, v any) {
+func (c *checker) card(path string, v any) {
 	if !isObject(v) {
 		c.add(path, "must be an object")
 		return
@@ -151,7 +103,7 @@ func (c *runChecker) card(path string, v any) {
 	}
 }
 
-func (c *runChecker) parts(path string, v any) {
+func (c *checker) parts(path string, v any) {
 	list, ok := v.([]any)
 	if !ok {
 		c.add(path, "must be an array")
@@ -168,7 +120,7 @@ func (c *runChecker) parts(path string, v any) {
 	}
 }
 
-func (c *runChecker) handle(path string, v any) {
+func (c *checker) handle(path string, v any) {
 	if !isObject(v) {
 		c.add(path, "must be an object")
 		return
@@ -180,7 +132,7 @@ func (c *runChecker) handle(path string, v any) {
 }
 
 // optional runs check on a field only when the event has it.
-func (c *runChecker) optional(e any, key string, check func(path string, v any)) {
+func (c *checker) optional(e any, key string, check func(path string, v any)) {
 	if v, present := get(e, key); present {
 		check(key, v)
 	}
@@ -199,7 +151,7 @@ func ValidateRunEvent(e any) []RunEventIssue {
 	if !ok {
 		return []RunEventIssue{{Path: "type", Message: "must be a string"}}
 	}
-	c := &runChecker{issues: []RunEventIssue{}}
+	c := &checker{issues: []RunEventIssue{}}
 	field := func(key string) any { v, _ := get(e, key); return v }
 	switch eventType {
 	case "run-start":

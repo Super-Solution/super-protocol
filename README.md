@@ -20,8 +20,11 @@ licenses**. This repository is that neutral ground:
 
 - **Plugin manifest and chat plugin**: what a plugin declares (capabilities, card kinds, tools) and
   how a host mounts it, framework-neutral.
-- **Inference gateway and stream events**: the request, usage and stream-event types plus an
+- **Inference gateway and stream events**: the request, usage and stream-event types, validators for a request, a
+  message and a stream event (`validateInferenceRequest`, `validateInferenceMessage`, `validateStreamEvent`), and an
   incremental SSE parser.
+- **Host theme and tool authority**: the colour and font tokens a host passes to plugin cards (`readHostTheme`,
+  `themeVariables`) and what a tool declares it can do (`read`, `draft`, `act`), in all three languages.
 - **Run events**: what an agent turn reports while it runs (text, tool calls, cards that wait for the person, usage,
   the end), the same whether the loop runs in the page or on a server in any language, and what a stream that
   stopped means for its run (see [`docs/RUN-EVENTS.md`](docs/RUN-EVENTS.md)).

@@ -70,6 +70,43 @@ type fixtures struct {
 			Allowed bool `json:"allowed"`
 		} `json:"expect"`
 	} `json:"card_placement"`
+	HostTheme []struct {
+		Value  any `json:"value"`
+		Expect struct {
+			Theme     *HostTheme        `json:"theme"`
+			Variables map[string]string `json:"variables"`
+		} `json:"expect"`
+	} `json:"host_theme"`
+	ToolAuthority []struct {
+		Tool   any `json:"tool"`
+		Expect struct {
+			Authority *string  `json:"authority"`
+			Presets   []string `json:"presets"`
+		} `json:"expect"`
+	} `json:"tool_authority"`
+	ChatPlugin []struct {
+		Plugin any `json:"plugin"`
+		Expect struct {
+			Issues     []ManifestIssue `json:"issues"`
+			PanelKinds *[]string       `json:"panel_kinds"`
+		} `json:"expect"`
+	} `json:"chat_plugin"`
+	InferenceMessage []struct {
+		Value  any             `json:"value"`
+		Expect []ManifestIssue `json:"expect"`
+	} `json:"inference_message"`
+	InferenceRequest []struct {
+		Value  any             `json:"value"`
+		Expect []ManifestIssue `json:"expect"`
+	} `json:"inference_request"`
+	StreamEvent []struct {
+		Value  any             `json:"value"`
+		Expect []ManifestIssue `json:"expect"`
+	} `json:"stream_event"`
+	InferenceStreamOutcome []struct {
+		Events []any                  `json:"events"`
+		Expect InferenceStreamOutcome `json:"expect"`
+	} `json:"inference_stream_outcome"`
 	SSE []struct {
 		Chunks        []string `json:"chunks"`
 		MaxFrameBytes *int     `json:"max_frame_bytes"`
@@ -188,6 +225,91 @@ func TestCardPlacement(t *testing.T) {
 	for i, c := range f.CardPlacement {
 		if valid, allowed := IsCardPlacement(c.Value), CanPlaceCard(c.Interactive, c.Value); valid != c.Expect.Valid || allowed != c.Expect.Allowed {
 			t.Errorf("card_placement[%d] %v interactive %v: valid %v allowed %v, want %+v", i, c.Value, c.Interactive, valid, allowed, c.Expect)
+		}
+	}
+}
+
+func TestHostTheme(t *testing.T) {
+	f := load(t)
+	if len(f.HostTheme) < 100 {
+		t.Fatalf("only %d cases", len(f.HostTheme))
+	}
+	for i, c := range f.HostTheme {
+		theme := ReadHostTheme(c.Value)
+		if !reflect.DeepEqual(theme, c.Expect.Theme) {
+			t.Errorf("host_theme[%d] %v: %+v, want %+v", i, c.Value, theme, c.Expect.Theme)
+			continue
+		}
+		if theme == nil {
+			if c.Expect.Variables != nil {
+				t.Errorf("host_theme[%d]: variables for no theme", i)
+			}
+		} else if got := ThemeVariables(*theme); !reflect.DeepEqual(got, c.Expect.Variables) {
+			t.Errorf("host_theme[%d] %v: variables %v, want %v", i, c.Value, got, c.Expect.Variables)
+		}
+	}
+}
+
+func TestToolAuthority(t *testing.T) {
+	f := load(t)
+	if len(f.ToolAuthority) < 20 {
+		t.Fatalf("only %d cases", len(f.ToolAuthority))
+	}
+	for i, c := range f.ToolAuthority {
+		authority, ok := PluginToolAuthority(c.Tool)
+		presets := []string{}
+		if ok {
+			presets = PluginToolPresets[authority]
+		}
+		if ok != (c.Expect.Authority != nil) || (ok && authority != *c.Expect.Authority) || !reflect.DeepEqual(presets, append([]string{}, c.Expect.Presets...)) {
+			t.Errorf("tool_authority[%d] %v: %q %v %v, want %+v", i, c.Tool, authority, ok, presets, c.Expect)
+		}
+	}
+}
+
+func TestChatPlugin(t *testing.T) {
+	f := load(t)
+	if len(f.ChatPlugin) < 40 {
+		t.Fatalf("only %d cases", len(f.ChatPlugin))
+	}
+	for i, c := range f.ChatPlugin {
+		if got := ValidateChatPluginData(c.Plugin); !reflect.DeepEqual(got, append([]ManifestIssue{}, c.Expect.Issues...)) {
+			t.Errorf("chat_plugin[%d]: %v, want %v", i, got, c.Expect.Issues)
+		}
+		manifest, _ := get(c.Plugin, "manifest")
+		if len(ValidatePluginManifest(manifest)) == 0 {
+			if got := PanelCardKinds(manifest); c.Expect.PanelKinds == nil || !reflect.DeepEqual(got, *c.Expect.PanelKinds) {
+				t.Errorf("chat_plugin[%d]: panel kinds %v, want %v", i, got, c.Expect.PanelKinds)
+			}
+		} else if c.Expect.PanelKinds != nil {
+			t.Errorf("chat_plugin[%d]: panel kinds for an invalid manifest", i)
+		}
+	}
+}
+
+func TestInference(t *testing.T) {
+	f := load(t)
+	if len(f.InferenceMessage) < 80 || len(f.InferenceRequest) < 200 || len(f.StreamEvent) < 400 || len(f.InferenceStreamOutcome) < 15 {
+		t.Fatalf("only %d/%d/%d/%d cases", len(f.InferenceMessage), len(f.InferenceRequest), len(f.StreamEvent), len(f.InferenceStreamOutcome))
+	}
+	for i, c := range f.InferenceMessage {
+		if got := ValidateInferenceMessage(c.Value); !reflect.DeepEqual(got, append([]ManifestIssue{}, c.Expect...)) {
+			t.Errorf("inference_message[%d] %v: %v, want %v", i, c.Value, got, c.Expect)
+		}
+	}
+	for i, c := range f.InferenceRequest {
+		if got := ValidateInferenceRequest(c.Value); !reflect.DeepEqual(got, append([]ManifestIssue{}, c.Expect...)) {
+			t.Errorf("inference_request[%d] %v: %v, want %v", i, c.Value, got, c.Expect)
+		}
+	}
+	for i, c := range f.StreamEvent {
+		if got := ValidateStreamEvent(c.Value); !reflect.DeepEqual(got, append([]ManifestIssue{}, c.Expect...)) {
+			t.Errorf("stream_event[%d] %v: %v, want %v", i, c.Value, got, c.Expect)
+		}
+	}
+	for i, c := range f.InferenceStreamOutcome {
+		if got := InferenceStreamOutcomeOf(c.Events); got != c.Expect {
+			t.Errorf("inference_stream_outcome[%d]: %s, want %s", i, got, c.Expect)
 		}
 	}
 }

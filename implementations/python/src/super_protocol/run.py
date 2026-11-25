@@ -12,6 +12,7 @@ from collections.abc import Callable, Iterable
 from typing import Any, Literal
 
 from . import _js as js
+from ._check import Checker
 from ._js import UNDEFINED, get
 from .validators import ManifestIssue
 
@@ -50,49 +51,7 @@ RunEventIssue = ManifestIssue
 RunStreamOutcome = Literal["empty", "finished", "awaiting-user", "interrupted"]
 
 
-def _is_count(value: Any) -> bool:
-    return js.is_integer(value) and value >= 0
-
-
-def _is_amount(value: Any) -> bool:
-    return js.finite(value) and value >= 0
-
-
-class _Checker:
-    def __init__(self) -> None:
-        self.issues: list[RunEventIssue] = []
-
-    def add(self, path: str, message: str) -> None:
-        self.issues.append({"path": path, "message": message})
-
-    def text(self, path: str, value: Any) -> None:
-        if not js.is_string(value) or value == "":
-            self.add(path, "must be a non-empty string")
-
-    def one_of(self, path: str, value: Any, allowed: tuple[str, ...]) -> None:
-        if not js.is_string(value) or value not in allowed:
-            self.add(path, f"must be one of {', '.join(allowed)}")
-
-    def count(self, path: str, value: Any) -> None:
-        if not _is_count(value):
-            self.add(path, "must be a non-negative integer")
-
-    def amount(self, path: str, value: Any) -> None:
-        if not _is_amount(value):
-            self.add(path, "must be a non-negative number")
-
-    def object(self, path: str, value: Any) -> None:
-        if not js.is_object(value):
-            self.add(path, "must be an object")
-
-    def string(self, path: str, value: Any) -> None:
-        if not js.is_string(value):
-            self.add(path, "must be a string")
-
-    def boolean(self, path: str, value: Any) -> None:
-        if not isinstance(value, bool):
-            self.add(path, "must be a boolean")
-
+class _Checker(Checker):
     def usage(self, path: str, value: Any) -> None:
         if not js.is_object(value):
             return self.add(path, "must be an object")

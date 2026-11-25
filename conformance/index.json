@@ -22,9 +22,9 @@
   },
   "protocol.v1.json": {
    "status": "stable",
-   "sha256": "86a8367a355fbcd9ada15769c3481b594a3f10150c2b3fd475108da8a0fcc102",
-   "bytes": 741546,
-   "cases": 2286,
+   "sha256": "56f7716de13da095b70a230c872a2dc7391a12e8c803b42826f3f1b11f0a06b5",
+   "bytes": 1022662,
+   "cases": 3223,
    "sections": {
     "plugin_manifest": 117,
     "editor_card": 37,
@@ -38,6 +38,13 @@
     "run_event_type": 28,
     "run_stream_outcome": 35,
     "card_placement": 36,
+    "host_theme": 110,
+    "tool_authority": 21,
+    "chat_plugin": 42,
+    "inference_message": 98,
+    "inference_request": 210,
+    "stream_event": 436,
+    "inference_stream_outcome": 20,
     "sse": 376
    }
   },

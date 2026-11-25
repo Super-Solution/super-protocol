@@ -5,7 +5,17 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  PLUGIN_TOOL_PRESETS,
   canPlaceCard,
+  inferenceStreamOutcome,
+  panelCardKinds,
+  pluginToolAuthority,
+  readHostTheme,
+  themeVariables,
+  validateChatPlugin,
+  validateInferenceMessage,
+  validateInferenceRequest,
+  validateStreamEvent,
   formatCardRef,
   isCardPlacement,
   isRunEventType,
@@ -65,6 +75,43 @@ describe("conformance data", () => {
     expect(data.card_placement.length).toBeGreaterThanOrEqual(30);
     for (const c of data.card_placement)
       expect({ valid: isCardPlacement(c.value), allowed: canPlaceCard(c.interactive === null ? undefined : { interactive: c.interactive }, c.value) }).toEqual(c.expect);
+  });
+  it("host theme", () => {
+    expect(data.host_theme.length).toBeGreaterThanOrEqual(100);
+    for (const c of data.host_theme) {
+      const theme = readHostTheme(c.value);
+      expect({ theme, variables: theme === null ? null : themeVariables(theme) }).toEqual(c.expect);
+    }
+  });
+  it("tool authority", () => {
+    for (const c of data.tool_authority) {
+      const authority = pluginToolAuthority(c.tool);
+      expect({ authority, presets: authority === null ? [] : PLUGIN_TOOL_PRESETS[authority] }).toEqual(c.expect);
+    }
+  });
+  it("chat plugin", () => {
+    expect(data.chat_plugin.length).toBeGreaterThanOrEqual(40);
+    for (const c of data.chat_plugin) {
+      const p = c.plugin;
+      const plugin = {
+        manifest: p.manifest,
+        cardKinds: p.cardKinds?.map(({ kind }: { kind: string }) => ({ kind, summary: "", schema: {}, validate: () => ({ ok: true as const }) })),
+        mounts: p.mounts && Object.fromEntries((p.mounts as string[]).map((kind) => [kind, () => ({ update() {}, destroy() {} })])),
+        tools: p.tools?.map((t: object) => ({ ...t, description: "", inputSchema: {}, run: async () => null })),
+      };
+      const issues = validateChatPlugin(plugin as never);
+      expect({ issues, panel_kinds: validatePluginManifest(plugin.manifest).length === 0 ? panelCardKinds(plugin as never) : null }).toEqual(c.expect);
+    }
+  });
+  it("inference messages, requests and stream events", () => {
+    expect(data.inference_message.length).toBeGreaterThanOrEqual(80);
+    for (const c of data.inference_message) expect(validateInferenceMessage(c.value)).toEqual(c.expect);
+    expect(data.inference_request.length).toBeGreaterThanOrEqual(200);
+    for (const c of data.inference_request) expect(validateInferenceRequest(c.value)).toEqual(c.expect);
+    expect(data.stream_event.length).toBeGreaterThanOrEqual(400);
+    for (const c of data.stream_event) expect(validateStreamEvent(c.value)).toEqual(c.expect);
+    expect(data.inference_stream_outcome.length).toBeGreaterThanOrEqual(15);
+    for (const c of data.inference_stream_outcome) expect(inferenceStreamOutcome(c.events)).toBe(c.expect);
   });
   it("sse", async () => {
     expect(data.sse.length).toBeGreaterThanOrEqual(300);

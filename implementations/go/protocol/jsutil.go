@@ -73,11 +73,16 @@ var (
 // base URL realistically is: scheme, optional credentials, a host (name, IPv4 or bracketed IPv6)
 // and an optional port, with the WHATWG leniency about extra slashes. Percent-encoded and
 // internationalised hosts are not reproduced.
-func isHTTPURL(s string) bool {
+func isHTTPURL(s string) bool { return isWebURL(s, false) }
+
+// isHTTPSURL is isHTTPURL for an https URL only.
+func isHTTPSURL(s string) bool { return isWebURL(s, true) }
+
+func isWebURL(s string, httpsOnly bool) bool {
 	s = strings.TrimFunc(s, func(r rune) bool { return r <= 0x20 })
 	s = strings.NewReplacer("\t", "", "\n", "", "\r", "").Replace(s)
 	loc := schemeRe.FindStringIndex(s)
-	if loc == nil {
+	if loc == nil || (httpsOnly && !strings.EqualFold(s[:loc[1]], "https:")) {
 		return false
 	}
 	rest := strings.TrimLeft(s[loc[1]:], `/\`)

@@ -6,7 +6,18 @@
 // package. implementations/typescript/src/conformance.test.ts fails if the file drifts from the reference.
 import { writeFileSync } from "node:fs";
 import {
+  PLUGIN_TOOL_PRESETS,
+  THEME_TOKENS,
   formatCardRef,
+  inferenceStreamOutcome,
+  panelCardKinds,
+  pluginToolAuthority,
+  readHostTheme,
+  themeVariables,
+  validateChatPlugin,
+  validateInferenceMessage,
+  validateInferenceRequest,
+  validateStreamEvent,
   isRunEventType,
   isRunTerminalEvent,
   isTerminalEvent,
@@ -964,9 +975,452 @@ for (const value of placementValues)
       expect: { valid: isCardPlacement(value), allowed: canPlaceCard(interactive === null ? undefined : { interactive }, value) },
     });
 
+// ---- host theme ------------------------------------------------------------------------------
+const themeRead = (value) => {
+  const theme = readHostTheme(clone(value));
+  return { theme, variables: theme === null ? null : themeVariables(theme) };
+};
+const allTokens = Object.fromEntries(THEME_TOKENS.map((t, i) => [t, i < 12 ? `#${String(i).padStart(2, "0")}${String(i).padStart(2, "0")}${String(i).padStart(2, "0")}` : t === "radius" ? "8px" : `"Font ${t}", system-ui, sans-serif`]));
+const themeValues = [
+  { mode: "light", tokens: allTokens },
+  { mode: "dark", tokens: allTokens },
+  { mode: "dark", tokens: {} },
+  { mode: "light" },
+  { mode: "light", tokens: null },
+  { mode: "light", tokens: [] },
+  { mode: "light", tokens: "x" },
+  { mode: "light", tokens: 5 },
+  { mode: "light", tokens: { text: "#111", surface: "#fff", unknown: "x", __proto__x: "y" } },
+  { mode: "light", tokens: { "font-sans": "Inter, sans-serif", "font-mono": "ui-monospace, 'Fira Code', monospace", radius: "0.5rem" } },
+  { mode: "light", tokens: { accent: "rgb(10 20 30 / 50%)", border: "color-mix(in srgb, red 20%, blue)", background: "var(--page-bg, #fff)" } },
+  { mode: "light", tokens: { text: "#111", extra: { nested: true } }, extra: 1 },
+];
+for (const mode of ["Light", "DARK", "", " light", "auto", "system", null, 1, true, [], {}]) themeValues.push({ mode, tokens: { text: "#111" } });
+themeValues.push({ tokens: { text: "#111" } }, null, [], "light", 5, true, {}, { mode: ["light"] });
+const themeCandidates = [
+  "#111",
+  "  #111  ",
+  "\t#fff\n",
+  "",
+  "   ",
+  " ",
+  "　x　",
+  "x".repeat(256),
+  "x".repeat(257),
+  " ".repeat(10) + "x".repeat(246),
+  "x".repeat(255) + " ",
+  "😀".repeat(128),
+  "😀".repeat(129),
+  "a;b",
+  "a}b",
+  "a{b",
+  "a<b",
+  "a>b",
+  "a\\b",
+  "a/*b",
+  "a*/b",
+  "a/b",
+  "a*b",
+  "url(x)",
+  "URL(x)",
+  "Url (x)",
+  "url \t(x)",
+  "url (x)",
+  "url (x)",
+  "url　(x)",
+  "url﻿(x)",
+  "url\u0085(x)",
+  "url᠎(x)",
+  "url​(x)",
+  "url(",
+  "url",
+  "ur l(x)",
+  "curl(x)",
+  "urlx(",
+  "expression(1)",
+  "EXPRESSION (1)",
+  "expreſſion(1)",
+  "expreSSion(1)",
+  "uRl(x)",
+  "urK(x)",
+  "@import",
+  "@IMPORT x",
+  "@imports",
+  "import",
+  "@ import",
+  "e-expression(1)",
+  "calc(1px + 2px)",
+  "linear-gradient(red, blue)",
+  "'quoted'",
+  "\"double\"",
+  "a\nb",
+  "日本語フォント",
+  5,
+  0,
+  null,
+  true,
+  [],
+  ["#111"],
+  {},
+];
+for (const candidate of themeCandidates) themeValues.push({ mode: "light", tokens: { text: candidate, accent: "#abc" } });
+for (const token of THEME_TOKENS) themeValues.push({ mode: "dark", tokens: { [token]: "  v  " } });
+const hostThemeCases = themeValues.map((value) => ({ value, expect: themeRead(value) }));
+
+// ---- tool authority --------------------------------------------------------------------------
+const authorityTools = [
+  { authority: "read" },
+  { authority: "draft" },
+  { authority: "act" },
+  { authority: "read", confirm: true },
+  { authority: "act", confirm: false, name: "x" },
+  { authority: "Read" },
+  { authority: "executor" },
+  { authority: "" },
+  { authority: " read" },
+  { authority: null },
+  { authority: 1 },
+  { authority: true },
+  { authority: ["read"] },
+  { authority: {} },
+  {},
+  { name: "t" },
+  null,
+  "read",
+  5,
+  [],
+  true,
+];
+const toolAuthorityCases = authorityTools.map((tool) => {
+  const authority = pluginToolAuthority(clone(tool));
+  return { tool, expect: { authority, presets: authority === null ? [] : PLUGIN_TOOL_PRESETS[authority] } };
+});
+
+// ---- chat plugin (the data part: a manifest, the card kinds and mounts and tools it has) ----------
+const pluginManifest = {
+  manifestVersion: 0,
+  name: "@supersolutions/demo-chat-plugin",
+  version: "1.0.0",
+  license: "Apache-2.0",
+  capabilities: [
+    { id: "demo.card", surface: "card", cardKind: "demo.card" },
+    { id: "demo.panel", surface: "panel", cardKind: "demo.workspace" },
+    { id: "demo.tool", surface: "tool", toolName: "demo_tool" },
+  ],
+};
+const chatPlugin = {
+  manifest: pluginManifest,
+  cardKinds: [{ kind: "demo.card" }, { kind: "demo.workspace" }],
+  mounts: ["demo.card", "demo.workspace"],
+  tools: [{ name: "demo_tool", authority: "read" }],
+};
+const withManifest = (fn) => mut(chatPlugin, (p) => fn(p.manifest));
+const chatPlugins = [
+  chatPlugin,
+  mut(chatPlugin, (p) => delete p.tools),
+  mut(chatPlugin, (p) => delete p.cardKinds),
+  mut(chatPlugin, (p) => delete p.mounts),
+  mut(chatPlugin, (p) => ((p.cardKinds = []), (p.mounts = []))),
+  mut(chatPlugin, (p) => (p.cardKinds = [{ kind: "demo.card" }])),
+  mut(chatPlugin, (p) => (p.mounts = ["demo.card"])),
+  mut(chatPlugin, (p) => (p.mounts = ["demo.workspace"])),
+  mut(chatPlugin, (p) => (p.mounts = [])),
+  mut(chatPlugin, (p) => (p.cardKinds = [{ kind: "other" }])),
+  mut(chatPlugin, (p) => (p.tools = [])),
+  mut(chatPlugin, (p) => (p.tools = [{ name: "other" }])),
+  withManifest((m) => (m.capabilities = [{ id: "demo.panel", surface: "panel" }])),
+  withManifest((m) => (m.capabilities = [{ id: "demo.panel", surface: "panel", cardKind: "missing" }])),
+  withManifest((m) => (m.capabilities = [{ id: "demo.canvas", surface: "canvas" }])),
+  withManifest((m) => (m.capabilities = [{ id: "demo.a", surface: "panel", cardKind: "demo.workspace" }, { id: "demo.b", surface: "panel", cardKind: "demo.workspace" }, { id: "demo.c", surface: "panel", cardKind: "demo.card" }])),
+  withManifest((m) => (m.manifestVersion = 1)),
+  withManifest((m) => (m.capabilities = [])),
+  mut(chatPlugin, (p) => (p.manifest = null)),
+  mut(chatPlugin, (p) => delete p.manifest),
+  { manifest: { ...pluginManifest, capabilities: [{ id: "bad", surface: "card" }] }, cardKinds: [], mounts: [] },
+];
+for (const authority of ["read", "draft", "act", "root", "Read", "", null, 1, true, [], {}])
+  chatPlugins.push(mut(chatPlugin, (p) => (p.tools = [{ name: "demo_tool", authority }])));
+for (const confirm of [true, false, "yes", 1, 0, null, [], {}])
+  chatPlugins.push(mut(chatPlugin, (p) => (p.tools = [{ name: "demo_tool", authority: "act", confirm }])));
+chatPlugins.push(
+  mut(chatPlugin, (p) => (p.tools = [{ name: "demo_tool" }, { name: "second", authority: "nope", confirm: "x" }, { name: "third", authority: "draft" }])),
+  mut(chatPlugin, (p) => (p.tools = [{ name: "demo_tool", confirm: "x" }])),
+);
+const chatPluginCases = chatPlugins.map((plugin) => {
+  const real = {
+    manifest: clone(plugin).manifest,
+    cardKinds: plugin.cardKinds?.map(({ kind }) => ({ kind, summary: "", schema: {}, validate: () => ({ ok: true }) })),
+    mounts: plugin.mounts && Object.fromEntries(plugin.mounts.map((kind) => [kind, () => ({ update() {}, destroy() {} })])),
+    tools: plugin.tools?.map((t) => ({ ...clone(t), description: "", inputSchema: {}, run: async () => null })),
+  };
+  const issues = validateChatPlugin(real);
+  return { plugin, expect: { issues, panel_kinds: validatePluginManifest(real.manifest).length === 0 ? panelCardKinds(real) : null } };
+});
+
+// ---- inference request, message and stream event ----------------------------------------------------
+const aTool = { name: "search", description: "Search the web", input_schema: { type: "object", properties: { q: { type: "string" } } } };
+const aCall = { id: "call_1", name: "search", arguments: '{"q":"x"}' };
+const request = {
+  service: "chat",
+  service_version: 3,
+  customer_id: "cust_1",
+  messages: [
+    { role: "system", content: "Be brief." },
+    { role: "user", content: "Find it." },
+    { role: "assistant", content: "", tool_calls: [aCall] },
+    { role: "tool", tool_call_id: "call_1", content: "found", is_error: false },
+    { role: "user", content: [{ type: "text", text: "and this?" }, { type: "image", url: "https://example.com/a.png", detail: "low" }] },
+  ],
+  tools: [aTool],
+  tool_choice: { name: "search" },
+  max_output_tokens: 512,
+  timeout_ms: 30000,
+};
+const oneMessage = (m) => ({ ...request, messages: [m], tools: undefined, tool_choice: undefined });
+const messageValues = [
+  { role: "system", content: "s" },
+  { role: "system", content: "" },
+  { role: "system", content: 5 },
+  { role: "system" },
+  { role: "system", content: ["x"] },
+  { role: "user", content: "hi" },
+  { role: "user", content: "" },
+  { role: "user", content: null },
+  { role: "user", content: {} },
+  { role: "user" },
+  { role: "user", content: [] },
+  { role: "user", content: [null] },
+  { role: "user", content: ["x"] },
+  { role: "user", content: [{}] },
+  { role: "user", content: [{ type: "audio" }] },
+  { role: "user", content: [{ type: "text" }] },
+  { role: "user", content: [{ type: "text", text: 5 }] },
+  { role: "user", content: [{ type: "text", text: "" }] },
+  { role: "user", content: [{ type: "image" }] },
+  { role: "user", content: [{ type: "image", url: 5 }] },
+  { role: "user", content: [{ type: "image", url: "" }] },
+  { role: "user", content: [{ type: "image", url: "https://example.com/a.png" }] },
+  { role: "user", content: [{ type: "image", url: "HTTPS://EXAMPLE.COM/a.png", detail: "auto" }] },
+  { role: "user", content: [{ type: "image", url: "https://example.com/a.png", detail: "high" }] },
+  { role: "user", content: [{ type: "image", url: "https://example.com/a.png", detail: "max" }] },
+  { role: "user", content: [{ type: "image", url: "https://example.com/a.png", detail: 1 }] },
+  { role: "user", content: [{ type: "image", url: "http://example.com/a.png" }] },
+  { role: "user", content: [{ type: "image", url: "ftp://example.com/a.png" }] },
+  { role: "user", content: [{ type: "image", url: "file:///etc/passwd" }] },
+  { role: "user", content: [{ type: "image", url: "javascript:alert(1)" }] },
+  { role: "user", content: [{ type: "image", url: "//example.com/a.png" }] },
+  { role: "user", content: [{ type: "image", url: "example.com/a.png" }] },
+  { role: "user", content: [{ type: "image", url: "https://" }] },
+  { role: "user", content: [{ type: "image", url: "https://exa mple.com/a.png" }] },
+  { role: "user", content: [{ type: "image", url: "data:image/png;base64,iVBORw0KGgo=" }] },
+  { role: "user", content: [{ type: "image", url: "data:image/jpeg;base64,/9j/4AAQ" }] },
+  { role: "user", content: [{ type: "image", url: "data:image/gif;base64,R0lGODlh" }] },
+  { role: "user", content: [{ type: "image", url: "data:image/webp;base64,UklGRg==" }] },
+  { role: "user", content: [{ type: "image", url: "data:image/svg+xml;base64,PHN2Zz4=" }] },
+  { role: "user", content: [{ type: "image", url: "data:image/png;base64," }] },
+  { role: "user", content: [{ type: "image", url: "data:image/png;base64,@@@" }] },
+  { role: "user", content: [{ type: "image", url: "data:image/png;base64,AAAA===" }] },
+  { role: "user", content: [{ type: "image", url: "data:image/png;base64,AAAA\n" }] },
+  { role: "user", content: [{ type: "image", url: "data:image/png,AAAA" }] },
+  { role: "user", content: [{ type: "image", url: "DATA:image/png;base64,AAAA" }] },
+  { role: "user", content: [{ type: "text", text: "a" }, { type: "bad" }, { type: "image", url: "x" }, null] },
+  { role: "assistant", content: "ok" },
+  { role: "assistant", content: "" },
+  { role: "assistant" },
+  { role: "assistant", content: null },
+  { role: "assistant", content: 5 },
+  { role: "assistant", tool_calls: [aCall] },
+  { role: "assistant", content: "x", tool_calls: [aCall] },
+  { role: "assistant", content: 5, tool_calls: [aCall] },
+  { role: "assistant", content: null, tool_calls: [aCall] },
+  { role: "assistant", tool_calls: [] },
+  { role: "assistant", tool_calls: null },
+  { role: "assistant", tool_calls: "x" },
+  { role: "assistant", tool_calls: {} },
+  { role: "assistant", tool_calls: [null] },
+  { role: "assistant", tool_calls: [{}] },
+  { role: "assistant", tool_calls: [{ id: "", name: "search", arguments: "{}" }] },
+  { role: "assistant", tool_calls: [{ id: 1, name: "search", arguments: "{}" }] },
+  { role: "assistant", tool_calls: [{ id: "c", name: "", arguments: "{}" }] },
+  { role: "assistant", tool_calls: [{ id: "c", name: "a b", arguments: "{}" }] },
+  { role: "assistant", tool_calls: [{ id: "c", name: "a.b", arguments: "{}" }] },
+  { role: "assistant", tool_calls: [{ id: "c", name: "x".repeat(64), arguments: "{}" }] },
+  { role: "assistant", tool_calls: [{ id: "c", name: "x".repeat(65), arguments: "{}" }] },
+  { role: "assistant", tool_calls: [{ id: "c", name: "ok_name-1", arguments: "" }] },
+  { role: "assistant", tool_calls: [{ id: "c", name: "search" }] },
+  { role: "assistant", tool_calls: [{ id: "c", name: "search", arguments: {} }] },
+  { role: "assistant", tool_calls: [{ id: "c", name: "search", arguments: "not json" }] },
+  { role: "assistant", tool_calls: [aCall, aCall] },
+  { role: "assistant", tool_calls: [aCall, { ...aCall, id: "call_2" }] },
+  { role: "assistant", tool_calls: [{ id: "c", name: "é", arguments: "{}" }] },
+  { role: "tool", tool_call_id: "call_1", content: "r" },
+  { role: "tool", tool_call_id: "call_1", content: "r", is_error: true },
+  { role: "tool", tool_call_id: "call_1", content: "r", is_error: "no" },
+  { role: "tool", tool_call_id: "call_1", content: "r", is_error: null },
+  { role: "tool", tool_call_id: "call_1" },
+  { role: "tool", tool_call_id: "call_1", content: 5 },
+  { role: "tool", tool_call_id: "", content: "r" },
+  { role: "tool", tool_call_id: 1, content: "r" },
+  { role: "tool", content: "r" },
+  { role: "tool" },
+  { role: "function", content: "x" },
+  { role: "developer", content: "x" },
+  { role: "User", content: "x" },
+  { role: "", content: "x" },
+  { role: null, content: "x" },
+  { role: 1, content: "x" },
+  { content: "x" },
+  {},
+  null,
+  [],
+  "user",
+  5,
+  true,
+];
+const inferenceMessageCases = messageValues.map((value) => ({ value, expect: validateInferenceMessage(clone(value)) }));
+const requests = [
+  request,
+  { ...request, tools: undefined, tool_choice: undefined },
+  mut(request, (r) => delete r.service_version),
+  mut(request, (r) => delete r.max_output_tokens),
+  mut(request, (r) => delete r.timeout_ms),
+  mut(request, (r) => delete r.tool_choice),
+  mut(request, (r) => (r.tools = [])),
+  { service: "s", customer_id: "c", messages: [{ role: "user", content: "x" }] },
+  ...messageValues.map(oneMessage),
+  // a tool result must answer a call an earlier assistant message made
+  { ...request, messages: [{ role: "tool", tool_call_id: "call_1", content: "r" }, { role: "assistant", tool_calls: [aCall] }] },
+  { ...request, messages: [{ role: "assistant", tool_calls: [aCall] }, { role: "tool", tool_call_id: "call_2", content: "r" }] },
+  { ...request, messages: [{ role: "assistant", tool_calls: [aCall, { ...aCall, id: "call_2" }] }, { role: "tool", tool_call_id: "call_2", content: "r" }, { role: "tool", tool_call_id: "call_1", content: "r" }] },
+  { ...request, messages: [{ role: "assistant", tool_calls: [aCall] }, { role: "tool", tool_call_id: "call_1", content: "r" }, { role: "tool", tool_call_id: "call_1", content: "again" }] },
+  { ...request, messages: [{ role: "assistant", tool_calls: [{ ...aCall, id: "" }] }, { role: "tool", tool_call_id: "", content: "r" }] },
+  { ...request, messages: [{ role: "assistant", tool_calls: [aCall, aCall] }, { role: "tool", tool_call_id: "call_1", content: "r" }] },
+];
+for (const service of [undefined, null, "", 5, [], {}, "x"]) requests.push(mut(request, (r) => (service === undefined ? delete r.service : (r.service = service))));
+for (const v of [undefined, null, -1, 0, 1, 1.5, "1", true, []]) requests.push(mut(request, (r) => (v === undefined ? delete r.service_version : (r.service_version = v))));
+for (const v of [undefined, null, "", 5, {}]) requests.push(mut(request, (r) => (v === undefined ? delete r.customer_id : (r.customer_id = v))));
+for (const v of [undefined, null, [], "x", {}, [null], [1], ["x"], [{}]]) requests.push(mut(request, (r) => (v === undefined ? delete r.messages : (r.messages = v))));
+for (const tools of [
+  null,
+  "x",
+  {},
+  [null],
+  ["x"],
+  [{}],
+  [{ name: "a" }],
+  [{ name: "a", input_schema: {} }],
+  [{ name: "a", input_schema: { type: "string" } }],
+  [{ name: "a", input_schema: { type: "object" } }],
+  [{ name: "a", input_schema: { type: ["object"] } }],
+  [{ name: "a", input_schema: [] }],
+  [{ name: "a", input_schema: null }],
+  [{ name: "", input_schema: { type: "object" } }],
+  [{ name: "a b", input_schema: { type: "object" } }],
+  [{ name: "x".repeat(64), input_schema: { type: "object" } }],
+  [{ name: "x".repeat(65), input_schema: { type: "object" } }],
+  [{ name: 5, input_schema: { type: "object" } }],
+  [{ name: "a", description: 5, input_schema: { type: "object" } }],
+  [{ name: "a", description: "", input_schema: { type: "object" } }],
+  [aTool, aTool],
+  [aTool, { ...aTool, name: "other" }],
+  [{ name: "a", input_schema: { type: "object" } }, { name: "a", input_schema: { type: "object" } }, { name: "a b" }],
+]) requests.push(mut(request, (r) => (r.tools = tools)));
+for (const choice of ["auto", "none", "required", "Auto", "", "any", null, 5, true, [], {}, { name: "search" }, { name: "" }, { name: 5 }, { name: "a b" }, { name: "search", extra: 1 }, ["auto"]])
+  requests.push(mut(request, (r) => (r.tool_choice = choice)));
+for (const v of [0, 1, 512, -1, 1.5, "512", null, true, [], {}]) {
+  requests.push(mut(request, (r) => (r.max_output_tokens = v)));
+  requests.push(mut(request, (r) => (r.timeout_ms = v)));
+}
+requests.push(null, [], "x", 5, true, {}, { messages: [] }, { service: "s", customer_id: "c", messages: "x", tools: 5, tool_choice: 7, max_output_tokens: 0, timeout_ms: 0 });
+const inferenceRequestCases = requests.map((value) => ({ value: clone(value), expect: validateInferenceRequest(clone(value)) }));
+
+const meters = { input: 10, cached: 4, cache_write: 2, output: 7 };
+const sUsage = { status: "confirmed", meters: { ...meters, images: 1, video_ms: 1500, audio_ms: 0, tasks: 2 } };
+const streamEvents = [
+  { type: "request.started", request_id: "req_1", sequence: 0, service_version: 3 },
+  { type: "output.delta", request_id: "req_1", sequence: 1, text: "Hel" },
+  { type: "output.tool_call.delta", request_id: "req_1", sequence: 2, index: 0, id: "call_1", name: "search", arguments_delta: '{"q"' },
+  { type: "output.tool_call.completed", request_id: "req_1", sequence: 3, index: 0, id: "call_1", name: "search", arguments: '{"q":"x"}' },
+  { type: "request.completed", request_id: "req_1", sequence: 4, execution_status: "succeeded", billing_status: "billed", finish_reason: "tool_calls", usage: sUsage },
+  { type: "request.failed", request_id: "req_1", sequence: 5, execution_status: "failed", billing_status: "released", error: { code: "upstream_unavailable" }, usage: { status: "none" } },
+  { type: "request.replayed", request_id: "req_1", sequence: 6 },
+];
+const streamValues = [...streamEvents];
+const streamOptional = {
+  "output.tool_call.delta": ["id", "name"],
+  "request.completed": ["finish_reason", "usage"],
+  "request.failed": ["execution_status", "billing_status", "error", "usage"],
+};
+for (const base of streamEvents) {
+  if (streamOptional[base.type]) streamValues.push(mut(base, (e) => streamOptional[base.type].forEach((k) => delete e[k])));
+  for (const path of runPaths(base).filter((p) => p.length > 0 && p.join(".") !== "type")) {
+    const key = path[path.length - 1];
+    if (typeof key === "string") streamValues.push(mut(base, (e) => delete runAt(e, path)[key]));
+    for (const junk of runJunk) streamValues.push(mut(base, (e) => (runAt(e, path)[key] = junk)));
+  }
+}
+for (const status of ["succeeded", "failed", "cancelled", "unknown", "ok", "Succeeded", ""]) streamValues.push({ type: "request.completed", request_id: "r", sequence: 1, execution_status: status, billing_status: "b" });
+for (const reason of ["stop", "length", "tool_calls", "tool-calls", "content_filter", "", null]) streamValues.push({ type: "request.completed", request_id: "r", sequence: 1, execution_status: "succeeded", billing_status: "b", finish_reason: reason });
+for (const name of ["x".repeat(64), "x".repeat(65), "a b", ""]) streamValues.push({ type: "output.tool_call.delta", request_id: "r", sequence: 1, index: 0, name, arguments_delta: "" });
+streamValues.push(
+  { type: "output.delta", request_id: "r", sequence: 1, text: "" },
+  { type: "output.tool_call.delta", request_id: "r", sequence: 1, index: 1, arguments_delta: "}" },
+  { type: "request.completed", request_id: "r", sequence: 1, execution_status: "succeeded", billing_status: "b", usage: { status: "pending" } },
+  { type: "request.completed", request_id: "r", sequence: 1, execution_status: "succeeded", billing_status: "b", usage: { status: "confirmed", meters: { input: 1 } } },
+  { type: "request.completed", request_id: "r", sequence: 1, execution_status: "succeeded", billing_status: "b", usage: { status: "confirmed", meters: { ...meters, images: -1, tasks: 1.5 } } },
+  { type: "request.completed", request_id: "r", sequence: 1, execution_status: "succeeded", billing_status: "b", usage: { status: "confirmed", meters: { ...meters, extra: "ignored" } } },
+  { type: "request.replayed", request_id: "r", sequence: 0, extra: { kept: true } },
+  { type: "request.started", request_id: "r", sequence: 0 },
+  null,
+  [],
+  "request.started",
+  5,
+  true,
+  {},
+  { type: null },
+  { type: 7 },
+  { type: "" },
+  { type: "request.Completed", request_id: "r", sequence: 0 },
+  { type: "request.cancelled", request_id: "r", sequence: 0 },
+  { type: "output.tool_call.started", request_id: "r", sequence: 0 },
+  { type: "run-start", runId: "r", mode: "stream" },
+  { request_id: "r", sequence: 0 },
+);
+const streamSeen = new Set();
+const streamEventCases = streamValues
+  .filter((value) => {
+    const key = JSON.stringify(value);
+    return !streamSeen.has(key) && streamSeen.add(key);
+  })
+  .map((value) => ({ value, expect: validateStreamEvent(clone(value)) }));
+const sev = Object.fromEntries(streamEvents.map((e) => [e.type, e]));
+const inferenceStreams = [
+  [],
+  [null, 5, "request.completed", [], {}, { type: 7 }, { type: "resync" }],
+  [sev["request.started"]],
+  [sev["request.started"], sev["output.delta"]],
+  [sev["request.started"], sev["output.delta"], sev["request.completed"]],
+  [sev["request.started"], sev["output.delta"], sev["request.failed"]],
+  [sev["request.replayed"]],
+  [sev["request.completed"]],
+  [sev["request.failed"]],
+  [sev["request.started"], sev["output.tool_call.delta"], sev["output.tool_call.completed"]],
+  [sev["request.started"], sev["output.tool_call.delta"], sev["output.tool_call.completed"], sev["request.completed"]],
+  [sev["request.started"], sev["request.failed"], sev["request.completed"]],
+  [sev["request.started"], sev["request.completed"], sev["request.failed"]],
+  [sev["request.completed"], sev["request.replayed"]],
+  [{ type: "resync" }, sev["request.started"], { type: "ping" }],
+  [{ type: "resync" }, sev["request.started"], { type: "ping" }, sev["request.completed"]],
+  [{ type: "request.completed" }],
+  [{ type: "request.Completed" }, { type: 7 }],
+  streamEvents.slice(0, 4),
+  streamEvents,
+];
+const inferenceStreamCases = inferenceStreams.map((events) => ({ events, expect: inferenceStreamOutcome(clone(events)) }));
+
 const out = {
   version: 1,
-  note: "Generated by scripts/export-conformance.mjs from the TypeScript reference in implementations/typescript/. Manifest and card validators (editor, chart, plot) return their issue lists or result objects as is; sse chunks are hex-encoded bytes. run_event holds issue lists, run_event_type whether a type is known and whether it ends a run, run_stream_outcome what a stopped stream says about its run. plot_fallback_message is the text a user sees in place of a plot that cannot be drawn. card_placement says whether a value is a placement and whether a kind (interactive true or false, null for no definition) may be shown there.",
+  note: "Generated by scripts/export-conformance.mjs from the TypeScript reference in implementations/typescript/. Manifest and card validators (editor, chart, plot) return their issue lists or result objects as is; sse chunks are hex-encoded bytes. run_event holds issue lists, run_event_type whether a type is known and whether it ends a run, run_stream_outcome what a stopped stream says about its run. plot_fallback_message is the text a user sees in place of a plot that cannot be drawn. card_placement says whether a value is a placement and whether a kind (interactive true or false, null for no definition) may be shown there. host_theme: what readHostTheme keeps and the CSS variables themeVariables makes of it. tool_authority: the declared authority of a tool and the presets that grant it. chat_plugin: validateChatPlugin on the data of a plugin (its manifest, the card kinds it defines, the kinds it has a mount for, its tools) and the card kinds its manifest declares for the side panel. inference_message, inference_request and stream_event are issue lists; inference_stream_outcome is what a stopped gateway stream says about its request.",
   plugin_manifest: manifestCases,
   editor_card: editorCases,
   chart_card: chartCases,
@@ -979,18 +1433,25 @@ const out = {
   run_event_type: runEventTypeCases,
   run_stream_outcome: runStreamCases,
   card_placement: placementCases,
+  host_theme: hostThemeCases,
+  tool_authority: toolAuthorityCases,
+  chat_plugin: chatPluginCases,
+  inference_message: inferenceMessageCases,
+  inference_request: inferenceRequestCases,
+  stream_event: streamEventCases,
+  inference_stream_outcome: inferenceStreamCases,
   sse: sseCases,
 };
 const lines = (key) => out[key].map((c) => "  " + JSON.stringify(c)).join(",\n");
 const body =
   `{\n "version": 1,\n "note": ${JSON.stringify(out.note)},\n` +
   ` "plot_fallback_message": ${JSON.stringify(PLOT_FALLBACK_MESSAGE)},\n` +
-  ["plugin_manifest", "editor_card", "chart_card", "plot_card", "card_ref_parse", "card_ref_format", "chart_ref", "terminal_event", "run_event", "run_event_type", "run_stream_outcome", "card_placement", "sse"]
+  ["plugin_manifest", "editor_card", "chart_card", "plot_card", "card_ref_parse", "card_ref_format", "chart_ref", "terminal_event", "run_event", "run_event_type", "run_stream_outcome", "card_placement", "host_theme", "tool_authority", "chat_plugin", "inference_message", "inference_request", "stream_event", "inference_stream_outcome", "sse"]
     .map((k) => ` "${k}": [\n${lines(k)}\n ]`)
     .join(",\n") +
   "\n}\n";
 writeFileSync(new URL("../conformance/protocol.v1.json", import.meta.url), body);
 const ok = (cases) => cases.filter((c) => (Array.isArray(c.expect) ? c.expect.length === 0 : c.expect?.ok === true)).length;
 console.log(
-  `manifest ${manifestCases.length} (${ok(manifestCases)} valid), editor ${editorCases.length} (${ok(editorCases)} valid), chart ${chartCases.length} (${ok(chartCases)} valid), plot ${plotCases.length} (${ok(plotCases)} valid), ref parse ${refParseCases.length} (${refParseCases.filter((c) => c.expect.ok).length} valid), ref format ${refFormatCases.length} (${refFormatCases.filter((c) => c.expect !== null).length} valid), chart ref ${chartRefCases.length} (${chartRefCases.filter((c) => c.expect?.ok).length} valid), terminal ${terminalCases.length}, run event ${runEventCases.length} (${ok(runEventCases)} valid), run event type ${runEventTypeCases.length}, run stream ${runStreamCases.length}, placement ${placementCases.length}, sse ${sseCases.length} (${sseCases.filter((c) => c.expect.error).length} errors)`,
+  `manifest ${manifestCases.length} (${ok(manifestCases)} valid), editor ${editorCases.length} (${ok(editorCases)} valid), chart ${chartCases.length} (${ok(chartCases)} valid), plot ${plotCases.length} (${ok(plotCases)} valid), ref parse ${refParseCases.length} (${refParseCases.filter((c) => c.expect.ok).length} valid), ref format ${refFormatCases.length} (${refFormatCases.filter((c) => c.expect !== null).length} valid), chart ref ${chartRefCases.length} (${chartRefCases.filter((c) => c.expect?.ok).length} valid), terminal ${terminalCases.length}, run event ${runEventCases.length} (${ok(runEventCases)} valid), run event type ${runEventTypeCases.length}, run stream ${runStreamCases.length}, placement ${placementCases.length}, host theme ${hostThemeCases.length}, tool authority ${toolAuthorityCases.length}, chat plugin ${chatPluginCases.length} (${chatPluginCases.filter((c) => c.expect.issues.length === 0).length} valid), inference message ${inferenceMessageCases.length} (${ok(inferenceMessageCases)} valid), inference request ${inferenceRequestCases.length} (${ok(inferenceRequestCases)} valid), stream event ${streamEventCases.length} (${ok(streamEventCases)} valid), inference stream ${inferenceStreamCases.length}, sse ${sseCases.length} (${sseCases.filter((c) => c.expect.error).length} errors)`,
 );
