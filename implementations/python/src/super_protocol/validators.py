@@ -344,7 +344,11 @@ def validate_chart_card_spec(spec: Any) -> CardResult:
     return _OK
 
 
-_PLOT_EXPECTED = 'spec: { ...a plot spec }, alt: "one sentence saying what the plot shows"'
+_PLOT_EXPECTED = (
+    'spec: { type: "bar", data: [{ region: "EU", revenue: 12 }, { region: "US", revenue: 20 }],'
+    ' x: "region", y: "revenue" } (the plot itself, its data inside it),'
+    ' alt: "one sentence saying what the plot shows" (beside spec, not inside it)'
+)
 
 
 def validate_plot_card_spec(spec: Any) -> CardResult:

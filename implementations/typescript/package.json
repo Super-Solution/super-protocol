@@ -1,6 +1,6 @@
 {
   "name": "@supersolutions/super-protocol",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Apache-2.0 shared protocol for the Super Solution libs: plugin manifest, chat plugin contract, inference gateway and editor card types. Types and validators only, no runtime dependencies.",
   "license": "Apache-2.0",
   "author": "SUPER SOLUTION LABS INC",

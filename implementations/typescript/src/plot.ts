@@ -53,7 +53,7 @@ export interface PlotCardSpec {
 
 export const PLOT_LIMITS = Object.freeze({ alt: 2048, idLength: 128, height: [160, 1200] as const });
 
-const PLOT_EXPECTED = 'spec: { ...a plot spec }, alt: "one sentence saying what the plot shows"';
+const PLOT_EXPECTED = 'spec: { type: "bar", data: [{ region: "EU", revenue: 12 }, { region: "US", revenue: 20 }], x: "region", y: "revenue" } (the plot itself, its data inside it), alt: "one sentence saying what the plot shows" (beside spec, not inside it)';
 
 const fail = (error: string, expected?: string): CardValidationResult => (expected ? { ok: false, error, expected } : { ok: false, error });
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
