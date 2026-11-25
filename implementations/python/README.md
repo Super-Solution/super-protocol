@@ -1,6 +1,7 @@
 # super-protocol (Python)
 
-Plugin manifest, editor, chart and plot card validators, run events (`validate_run_event`,
+Plugin manifest, editor, chart and plot card validators, card references (`parse_card_ref`, `format_card_ref`,
+`parse_chart_ref`), card placement (`is_card_placement`, `can_place_card`), run events (`validate_run_event`,
 `run_stream_outcome`) and an incremental SSE parser. The TypeScript
 package `@supersolutions/super-protocol` in [`../typescript`](../typescript) is the reference; this port reproduces
 every case in [`../../conformance`](../../conformance/README.md), messages included. Pure standard

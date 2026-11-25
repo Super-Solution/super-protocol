@@ -13,15 +13,19 @@ pnpm typecheck
 pnpm test
 
 echo "== conformance data is reproducible"
-cp conformance/protocol.v1.json /tmp/protocol.v1.json.before
+before="$(mktemp -d)"
+cp conformance/protocol.v1.json conformance/index.json "$before/"
 pnpm conformance:export >/dev/null
-if ! cmp -s conformance/protocol.v1.json /tmp/protocol.v1.json.before; then
-  echo "conformance/protocol.v1.json drifted from the TypeScript reference; review the diff" >&2
-  exit 1
-fi
+for f in protocol.v1.json index.json; do
+  if ! cmp -s "conformance/$f" "$before/$f"; then
+    echo "conformance/$f drifted from the TypeScript reference; review the diff" >&2
+    exit 1
+  fi
+done
 
 echo "== agent loop cases are reproducible from their source"
 node scripts/export-agent-loop.mjs --check
+node scripts/export-index.mjs --check
 # The repair cases are generated from Super Chat's repair.ts: checked only when a Super Chat checkout is known.
 if [ -n "${SUPER_CHAT_DIR:-}" ]; then
   node scripts/export-tool-repair.mjs --check
