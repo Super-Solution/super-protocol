@@ -36,6 +36,9 @@ fi
 
 echo "== go"
 (cd implementations/go && go vet ./... && test -z "$(gofmt -l .)" && go test ./...)
+echo "== go, through the language-neutral runner"
+node scripts/conformance-run-selftest.mjs
+node scripts/conformance-run.mjs --require-all --command "cd implementations/go && go run ./conformance-shim"
 
 if [ "${SKIP_RUST:-0}" != "1" ]; then
   echo "== rust (agent loop)"
@@ -48,5 +51,7 @@ if [ "${SKIP_PYTHON:-0}" != "1" ]; then
   python3 -m venv "$venv"
   "$venv/bin/pip" install -q -e "implementations/python[dev]"
   (cd implementations/python && "$venv/bin/pytest" -q && "$venv/bin/ruff" check . && "$venv/bin/mypy")
+  echo "== python, through the language-neutral runner"
+  node scripts/conformance-run.mjs --require-all --command "$venv/bin/python implementations/python/conformance-shim/shim.py"
 fi
 echo "all checks passed"

@@ -40,6 +40,9 @@ licenses**. This repository is that neutral ground:
 - **JSON Schema** (2020-12): `schemas/*.schema.json` for the plugin manifest, a run event, a card and its answer, an
   inference request, message and stream event, and a host theme, so a language with no port here can generate its
   types from them (see [`docs/SCHEMAS.md`](docs/SCHEMAS.md)).
+- **Conformance runner**: `scripts/conformance-run.mjs` runs `conformance/protocol.v1.json` against a program in any
+  language over stdin and stdout, so a new implementation needs a loop of a few lines, not a harness (see
+  [`docs/CONFORMANCE-RUNNER.md`](docs/CONFORMANCE-RUNNER.md)).
 - **Card references**: the `ref:` link that lets text in a message point into a card, and the `ref()` method a card
   answers it with (see [`docs/CARD-REFS.md`](docs/CARD-REFS.md)).
 - **Card placement**: the same card shown inline in a conversation, in a host's side panel or inside a
