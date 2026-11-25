@@ -40,6 +40,24 @@
     "decode": 12
    }
   },
+  "interop-mcp.v0.json": {
+   "status": "draft",
+   "sha256": "f7745deddbd369ad62903ce37e84c428b76eb4d0aeb1c9a4dd2a6c8800c723c5",
+   "bytes": 16379,
+   "cases": 117,
+   "sections": {
+    "interop_mcp": 117
+   }
+  },
+  "interop-otel.v0.json": {
+   "status": "draft",
+   "sha256": "e71a89337dada2257b1b7564ad9de5439c488afe88053dc85e908595a8d7feee",
+   "bytes": 21359,
+   "cases": 96,
+   "sections": {
+    "interop_otel": 96
+   }
+  },
   "protocol.v1.json": {
    "status": "stable",
    "sha256": "7d91e6a83bde5d2525853d3c19df4b75ed1d4b45f959fd8298c7ac31dec748b6",

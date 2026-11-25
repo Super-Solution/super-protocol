@@ -1,4 +1,4 @@
-# Interop with AG-UI and the AI SDK (draft)
+# Interop with AG-UI, the AI SDK, MCP and OpenTelemetry (draft)
 
 > **Draft.** These modules are not stable and can change in any release. The golden files are `*.v0.json`, outside
 > `protocol.v1.json`, and nothing here is part of the wire contract.
@@ -10,13 +10,17 @@ that already speaks one of them should not need a second client to show a run:
 | --- | --- | --- |
 | `@supersolutions/super-protocol/interop/ag-ui` | [AG-UI](https://docs.ag-ui.com) events | `conformance/interop-ag-ui.v0.json` |
 | `@supersolutions/super-protocol/interop/ai-sdk` | the Vercel AI SDK UI message stream (`useChat`) | `conformance/interop-ai-sdk.v0.json` |
+| `@supersolutions/super-protocol/interop/mcp` | MCP tool annotations, MCP Apps host context, elicitation actions | `conformance/interop-mcp.v0.json` |
+| `@supersolutions/super-protocol/interop/otel` | OpenTelemetry GenAI span attributes | `conformance/interop-otel.v0.json` |
 
-Both are TypeScript only. They are not ported to Go or Python: a draft adapter that is wrong in three languages is worse
+The first two are stream adapters; the last two are pure functions (no state, no stream) and are described after them.
+
+All four are TypeScript only. They are not ported to Go or Python: a draft adapter that is wrong in three languages is worse
 than one that is wrong in one, and the golden files already say what a port has to do.
 
-## How they work
+## How the stream adapters work
 
-Each module has the same shape, so the next adapter looks like the last:
+Each of the first two modules has the same shape, so the next adapter looks like the last:
 
 ```ts
 import { createEncoder, createDecoder, encode, decode } from "@supersolutions/super-protocol/interop/ag-ui";
@@ -126,3 +130,77 @@ differences are exactly the list above.
 - **Confirm or form** depends on the caller's `isConfirm` and `interruptReason` options: a card's kind does not say
   whether it is a yes/no question. No default guesses.
 - **The AG-UI resume payload** collapses submit, select and confirm into one `resolved`.
+
+## MCP (`interop/mcp`)
+
+Written against MCP `2026-07-28` and MCP Apps `2026-01-26`; every rule below was read from those specifications, and the
+functions are **not** tested against an MCP SDK (none is a dependency). Pure functions: nothing is renamed, and where a word
+has no counterpart the answer is `null` or an absent field, never a guess.
+
+| Idea | Here | MCP | Function |
+| --- | --- | --- | --- |
+| What a tool may do | `authority`: `read`, `draft`, `act` | `annotations.readOnlyHint`, `destructiveHint` | `toolAnnotationsFromAuthority`, `authorityFromAnnotations` |
+| Colours and fonts | `HostTheme` | MCP Apps `hostContext.theme` and `styles.variables` | `hostThemeToMcpAppsContext`, `hostThemeFromMcpAppsContext` |
+| Where a card is shown | `placement`: `inline`, `panel`, `document` | `displayMode`: `inline`, `fullscreen`, `pip` | `placementToDisplayMode`, `displayModeToPlacement` |
+| What the person did | card response `type` | elicitation `action`: `accept`, `decline`, `cancel` | `cardResponseToElicitationAction` |
+
+- **Authority and annotations.** `read` is `readOnlyHint: true`; `draft` is `readOnlyHint: false, destructiveHint: false`;
+  `act` is `readOnlyHint: false, destructiveHint: true`. A missing or unknown authority gives no hints, which an MCP client
+  reads as its cautious defaults (not read-only, destructive). The other way round, **MCP says a client MUST treat tool
+  annotations as untrusted unless they come from a trusted server**, so `authorityFromAnnotations` returns `null` unless the
+  caller passes `{ trusted: true }`; whether a server is trusted is the host's policy, and a tool with no authority gets no
+  preset anyway. Even then, hints that do not say (no boolean `readOnlyHint`) give `null`.
+- **Plugin authority is a claim too.** A plugin's own `authority` is what it says about itself: a plugin from a source the
+  host does not trust can declare `read` for a tool that deletes things. Whether to believe it is the host's policy, as with
+  MCP annotations. (This is the sentence that `wire-contracts.md` in the dev docs lacks; that repository is not touched here.)
+- **Theme.** `MCP_APPS_STYLE_VARIABLES` is the full list of the 76 variables MCP Apps standardizes (the draft spec has the
+  same 76). Thirteen of the 15 tokens map to a variable (`background`, `surface`, `surface-raised`, `border`, `text`, `text-muted`,
+  `font-sans`, `font-mono`, `radius`, and `positive`, `negative`, `warning`, `info` as the *text* colour of that state).
+  `accent` and `accent-contrast` have none: MCP Apps has no brand colour, and no variable is borrowed. Going the other way,
+  every variable that no token maps to is not read, and an unsafe value (`url(...)`, `;`, `{`) is dropped by itself.
+  A `light-dark(a, b)` value, which MCP Apps asks hosts to use, is passed through as it is.
+- **Placement.** `panel` is `fullscreen` or `pip`: the caller chooses (`panelAs`), nothing is assumed. `document` has no
+  counterpart, because MCP Apps has no place inside a document: `null`.
+- **Elicitation.** `submit`, `select` and `confirm` are `accept`; `cancel` and `dismiss` are `cancel`. **Nothing is
+  `decline`**, MCP's explicit refusal: this protocol has no such action (a refusal is a `cancel` on a confirm card today),
+  and adding one would be a new enum value, which is the owner's call. Not mapped in the other direction: `accept` does
+  not say whether the card was a form, a selection or a yes/no.
+
+## OpenTelemetry GenAI (`interop/otel`)
+
+Pure functions that return the attribute dictionary of a span; the application makes the span, so this package has no
+`@opentelemetry/*` dependency. The attributes are in **Development** status and are **not checked against an OpenTelemetry
+package**; the names are in one object (`GEN_AI`) and in `conformance/interop-otel.v0.json`, so a rename is an edit in two
+places. Names were read from the GenAI conventions repository (`semantic-conventions-genai`, `main`, 2026-11-25).
+
+| Run | Attribute |
+| --- | --- |
+| `run-start` (`runAttributes`) | `gen_ai.operation.name: invoke_agent`; `threadId` is `gen_ai.conversation.id` |
+| `tool-call` and its `tool-result` (`toolAttributes`, span name `toolSpanName`) | `gen_ai.operation.name: execute_tool`, `gen_ai.tool.name`, `gen_ai.tool.call.id`; a `failure` sets `error.type: _OTHER` |
+| `usage`, `run-finish.usage` (`usageAttributes`) | `gen_ai.usage.input_tokens`, `output_tokens`, `cache_read.input_tokens`, `reasoning.output_tokens` |
+| gateway meters (`usageAttributesFromMeters`) | the same, and `cache_write.input_tokens` |
+| `finishReason` (`finishReasonAttributes`) | `gen_ai.response.finish_reasons: [stop \| length \| tool_calls \| content_filter \| error \| interrupted]` |
+
+- **Counting is an argument, never a guess.** `gen_ai.usage.input_tokens` SHOULD include cached tokens (cache reads and
+  writes), and `gen_ai.usage.output_tokens` SHOULD include reasoning tokens. Whether a run's `inputTokens` includes cached
+  tokens is the open question O1 (`RUN-EVENTS.md`); whether its `outputTokens` includes reasoning is not written down
+  either. So `usageAttributes(usage, { input, output })` takes how the usage counts, and throws a `RangeError` for numbers
+  that cannot be that reading (an "includes" total smaller than its part). **`outputTokens` is a second open reading that
+  the review did not list.** A count that is absent is left out, never written as 0.
+- **`RunUsage` has no cache writes.** If the reading excludes cached tokens and some were written, the input is understated
+  by them; use `usageAttributesFromMeters`, whose `Usage` has `cache_write`.
+- **A failure is `_OTHER`**, not its message: `error.type` must be low-cardinality, and a tool failure is free text. A run's
+  `error.type` can be given by the caller (`runAttributes(start, { errorType })`).
+- **`cancelled` is `interrupted`**, the conventions' word for a caller that stopped a generation without an error;
+  `unknown` has no word and gives no attribute. The other words are OpenAI-style, as the gateway's `tool_calls` already is;
+  the conventions say a finish reason is the provider's own.
+- **Not done:** `run-start.trace` (`traceparent`/`tracestate`) from the review's A9 is a change to the wire shape, so it is
+  left for the owner; no span is built and no context is propagated.
+
+### What the specifications showed that the review did not expect
+
+- The OpenTelemetry attributes **moved** to a new repository (`semantic-conventions-genai`); the older registry marks them
+  deprecated, and there calls the cache-write count `gen_ai.usage.cache_creation.input_tokens`. The review's name
+  `cache_write.input_tokens` is the current one.
+- MCP Apps has no accent colour, and its state colours (`success`, `danger`, `warning`, `info`) come in background, text,
+  border and ring forms, so one token cannot fill them.

@@ -46,7 +46,9 @@ licenses**. This repository is that neutral ground:
 - **Interop** (draft): `interop/ag-ui` and `interop/ai-sdk` turn run events into AG-UI events and into the Vercel AI SDK
   UI message stream and back, as small state machines with no runtime dependency, and say what the other side cannot carry.
   Pinned by `conformance/interop-ag-ui.v0.json` and `conformance/interop-ai-sdk.v0.json`, which are checked against the real
-  `@ag-ui/core` and `ai` packages (see [`docs/INTEROP.md`](docs/INTEROP.md)).
+  `@ag-ui/core` and `ai` packages. `interop/mcp` (tool annotations, MCP Apps theme variables, display mode, elicitation
+  actions) and `interop/otel` (GenAI span attributes) are pure functions pinned by `conformance/interop-mcp.v0.json` and
+  `conformance/interop-otel.v0.json`, not checked against an MCP or OpenTelemetry package (see [`docs/INTEROP.md`](docs/INTEROP.md)).
 - **Card references**: the `ref:` link that lets text in a message point into a card, and the `ref()` method a card
   answers it with (see [`docs/CARD-REFS.md`](docs/CARD-REFS.md)).
 - **Card placement**: the same card shown inline in a conversation, in a host's side panel or inside a

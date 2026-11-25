@@ -98,6 +98,16 @@
       "types": "./dist/interop/ai-sdk.d.ts",
       "import": "./dist/interop/ai-sdk.js",
       "default": "./dist/interop/ai-sdk.js"
+    },
+    "./interop/mcp": {
+      "types": "./dist/interop/mcp.d.ts",
+      "import": "./dist/interop/mcp.js",
+      "default": "./dist/interop/mcp.js"
+    },
+    "./interop/otel": {
+      "types": "./dist/interop/otel.d.ts",
+      "import": "./dist/interop/otel.js",
+      "default": "./dist/interop/otel.js"
     }
   },
   "files": [

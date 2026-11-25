@@ -116,6 +116,11 @@ export interface PluginTool {
   /**
    * Required for a host to offer the tool. A tool with a missing or unknown
    * authority stays out of every preset: authority is never assumed.
+   *
+   * It is what the plugin says about itself. A plugin from a source the host does not
+   * trust can declare `read` for a tool that deletes things, so whether to believe it is
+   * the host's policy, as MCP says of tool annotations. Authority that comes from outside
+   * (MCP annotations, `interop/mcp`) is likewise absent unless the host trusts the source.
    */
   authority?: PluginToolAuthority;
   /** The host must get the user's agreement before each run and then pass `confirmed: true`. */
