@@ -1,5 +1,5 @@
-import { count, isObject, obj, oneOf, str, bool, text, type Add } from "./check.js";
-import type { ManifestIssue } from "./plugin.js";
+import { bool, count, isObject, obj, oneOf, str, text, wrongType } from "./check.js";
+import { collector, didYouMean, jsonType, type Add, type Issue } from "./issue.js";
 
 /**
  * The inference-gateway abstraction. super-chat talks to this interface, not to
@@ -194,39 +194,45 @@ function isHttpsUrl(value: unknown): boolean {
 }
 
 function toolName(add: Add, path: string, v: unknown): void {
-  if (typeof v !== "string" || !TOOL_NAME.test(v)) add(path, "must be 1 to 64 letters, digits, _ or -");
+  const message = "must be 1 to 64 letters, digits, _ or -";
+  if (typeof v !== "string") wrongType(add, path, v, message);
+  else if (!TOOL_NAME.test(v)) add(path, "format", message);
 }
 
 function positive(add: Add, path: string, v: unknown): void {
-  if (typeof v !== "number" || !Number.isInteger(v) || v < 1) add(path, "must be a positive integer");
+  const message = "must be a positive integer";
+  if (typeof v !== "number") wrongType(add, path, v, message);
+  else if (!Number.isInteger(v) || v < 1) add(path, "range", message);
 }
 
 function parts(add: Add, path: string, v: unknown[]): void {
-  if (v.length === 0) return add(path, "must not be empty");
+  if (v.length === 0) return add(path, "empty", "must not be empty");
   v.forEach((part: unknown, i) => {
     const p = `${path}[${i}]`;
-    if (!isObject(part)) return add(p, "must be an object");
+    if (!isObject(part)) return wrongType(add, p, part, "must be an object");
     oneOf(add, `${p}.type`, part.type, ["text", "image"]);
     if (part.type === "text") str(add, `${p}.text`, part.text);
     if (part.type === "image") {
-      if (!isHttpsUrl(part.url) && !(typeof part.url === "string" && DATA_IMAGE.test(part.url))) add(`${p}.url`, "must be an https URL or a data:image URL (png, jpeg, gif or webp, base64)");
+      const message = "must be an https URL or a data:image URL (png, jpeg, gif or webp, base64)";
+      if (typeof part.url !== "string") wrongType(add, `${p}.url`, part.url, message);
+      else if (!isHttpsUrl(part.url) && !DATA_IMAGE.test(part.url)) add(`${p}.url`, "format", message);
       if (part.detail !== undefined) oneOf(add, `${p}.detail`, part.detail, IMAGE_DETAILS);
     }
   });
 }
 
 function toolCalls(add: Add, path: string, v: unknown, made: Set<string>): void {
-  if (!Array.isArray(v)) return add(path, "must be an array");
-  if (v.length === 0) return add(path, "must not be empty");
+  if (!Array.isArray(v)) return wrongType(add, path, v, "must be an array");
+  if (v.length === 0) return add(path, "empty", "must not be empty");
   const own = new Set<string>();
   v.forEach((call: unknown, i) => {
     const p = `${path}[${i}]`;
-    if (!isObject(call)) return add(p, "must be an object");
+    if (!isObject(call)) return wrongType(add, p, call, "must be an object");
     text(add, `${p}.id`, call.id);
     toolName(add, `${p}.name`, call.name);
     str(add, `${p}.arguments`, call.arguments);
     if (typeof call.id === "string" && call.id !== "") {
-      if (own.has(call.id)) add(`${p}.id`, "duplicate tool call id");
+      if (own.has(call.id)) add(`${p}.id`, "unique", "duplicate tool call id");
       own.add(call.id);
     }
   });
@@ -234,7 +240,7 @@ function toolCalls(add: Add, path: string, v: unknown, made: Set<string>): void 
 }
 
 function message(add: Add, path: string, v: unknown, made: Set<string> | null): void {
-  if (!isObject(v)) return add(path, "must be an object");
+  if (!isObject(v)) return wrongType(add, path, v, "must be an object");
   const at = (key: string) => (path === "" ? key : `${path}.${key}`);
   if (typeof v.role !== "string" || !(INFERENCE_ROLES as readonly string[]).includes(v.role)) return oneOf(add, at("role"), v.role, INFERENCE_ROLES);
   switch (v.role) {
@@ -243,7 +249,7 @@ function message(add: Add, path: string, v: unknown, made: Set<string> | null): 
       break;
     case "user":
       if (Array.isArray(v.content)) parts(add, at("content"), v.content);
-      else if (typeof v.content !== "string") add(at("content"), "must be a string or an array of content parts");
+      else if (typeof v.content !== "string") wrongType(add, at("content"), v.content, "must be a string or an array of content parts");
       break;
     case "assistant":
       if (v.tool_calls !== undefined) {
@@ -255,7 +261,7 @@ function message(add: Add, path: string, v: unknown, made: Set<string> | null): 
       text(add, at("tool_call_id"), v.tool_call_id);
       str(add, at("content"), v.content);
       if (v.is_error !== undefined) bool(add, at("is_error"), v.is_error);
-      if (made && typeof v.tool_call_id === "string" && v.tool_call_id !== "" && !made.has(v.tool_call_id)) add(at("tool_call_id"), "no earlier assistant message made this tool call");
+      if (made && typeof v.tool_call_id === "string" && v.tool_call_id !== "" && !made.has(v.tool_call_id)) add(at("tool_call_id"), "reference", "no earlier assistant message made this tool call");
   }
 }
 
@@ -263,9 +269,9 @@ function message(add: Add, path: string, v: unknown, made: Set<string> | null): 
  * Checks one message on its own: its role, its content and, for an assistant, its tool calls. Whether a tool
  * result answers a call an earlier message made needs the whole conversation; `validateInferenceRequest` checks it.
  */
-export function validateInferenceMessage(value: unknown): ManifestIssue[] {
-  const issues: ManifestIssue[] = [];
-  message((path, msg) => issues.push({ path, message: msg }), "", value, null);
+export function validateInferenceMessage(value: unknown): Issue[] {
+  const { issues, add } = collector();
+  message(add, "", value, null);
   return issues;
 }
 
@@ -273,31 +279,36 @@ export function validateInferenceMessage(value: unknown): ManifestIssue[] {
  * Checks a request before it is sent. A gateway that cannot call tools must refuse a request that declares them,
  * not ignore them: this says only whether the request is well formed, not whether a given gateway can serve it.
  */
-export function validateInferenceRequest(value: unknown): ManifestIssue[] {
-  const issues: ManifestIssue[] = [];
-  const add: Add = (path, msg) => issues.push({ path, message: msg });
-  if (!isObject(value)) return [{ path: "", message: "request must be an object" }];
+export function validateInferenceRequest(value: unknown): Issue[] {
+  const { issues, add } = collector();
+  if (!isObject(value)) {
+    wrongType(add, "", value, "request must be an object");
+    return issues;
+  }
   const r = value;
   text(add, "service", r.service);
   if (r.service_version !== undefined) count(add, "service_version", r.service_version);
   text(add, "customer_id", r.customer_id);
-  if (!Array.isArray(r.messages) || r.messages.length === 0) add("messages", "must be a non-empty array");
+  if (!Array.isArray(r.messages)) wrongType(add, "messages", r.messages, "must be a non-empty array");
+  else if (r.messages.length === 0) add("messages", "empty", "must be a non-empty array");
   else {
     const made = new Set<string>();
     r.messages.forEach((m: unknown, i) => message(add, `messages[${i}]`, m, made));
   }
   if (r.tools !== undefined) {
-    if (!Array.isArray(r.tools)) add("tools", "must be an array");
+    if (!Array.isArray(r.tools)) wrongType(add, "tools", r.tools, "must be an array");
     else {
       const names = new Set<string>();
       r.tools.forEach((tool: unknown, i) => {
         const p = `tools[${i}]`;
-        if (!isObject(tool)) return add(p, "must be an object");
+        if (!isObject(tool)) return wrongType(add, p, tool, "must be an object");
         toolName(add, `${p}.name`, tool.name);
         if (tool.description !== undefined) str(add, `${p}.description`, tool.description);
-        if (!isObject(tool.input_schema) || tool.input_schema.type !== "object") add(`${p}.input_schema`, 'must be a JSON Schema object with type "object"');
+        const schema = 'must be a JSON Schema object with type "object"';
+        if (!isObject(tool.input_schema)) wrongType(add, `${p}.input_schema`, tool.input_schema, schema);
+        else if (tool.input_schema.type !== "object") add(`${p}.input_schema`, "shape", schema);
         if (typeof tool.name === "string" && TOOL_NAME.test(tool.name)) {
-          if (names.has(tool.name)) add(`${p}.name`, "duplicate tool name");
+          if (names.has(tool.name)) add(`${p}.name`, "unique", "duplicate tool name");
           names.add(tool.name);
         }
       });
@@ -306,7 +317,7 @@ export function validateInferenceRequest(value: unknown): ManifestIssue[] {
   if (r.tool_choice !== undefined) {
     const c = r.tool_choice;
     if (isObject(c)) toolName(add, "tool_choice.name", c.name);
-    else if (c !== "auto" && c !== "none" && c !== "required") add("tool_choice", 'must be "auto", "none", "required" or { name }');
+    else if (c !== "auto" && c !== "none" && c !== "required") add("tool_choice", typeof c === "string" ? "enum" : "type", 'must be "auto", "none", "required" or { name }', typeof c === "string" ? didYouMean(c, ["auto", "none", "required"]) : `got ${jsonType(c)}`);
   }
   if (r.max_output_tokens !== undefined) positive(add, "max_output_tokens", r.max_output_tokens);
   if (r.timeout_ms !== undefined) positive(add, "timeout_ms", r.timeout_ms);
@@ -314,11 +325,11 @@ export function validateInferenceRequest(value: unknown): ManifestIssue[] {
 }
 
 function inferenceUsage(add: Add, path: string, v: unknown): void {
-  if (!isObject(v)) return add(path, "must be an object");
+  if (!isObject(v)) return wrongType(add, path, v, "must be an object");
   text(add, `${path}.status`, v.status);
   if (v.meters === undefined) return;
   const m = v.meters;
-  if (!isObject(m)) return add(`${path}.meters`, "must be an object");
+  if (!isObject(m)) return wrongType(add, `${path}.meters`, m, "must be an object");
   for (const k of USAGE_METERS) count(add, `${path}.meters.${k}`, m[k]);
   for (const k of USAGE_EXTRAS) if (m[k] !== undefined) count(add, `${path}.meters.${k}`, m[k]);
 }
@@ -327,13 +338,21 @@ function inferenceUsage(add: Add, path: string, v: unknown): void {
  * Checks one stream event of the gateway. For whoever produces events; a consumer skips a type it does not know
  * (`inferenceStreamOutcome` does), since later versions add types.
  */
-export function validateStreamEvent(value: unknown): ManifestIssue[] {
-  const issues: ManifestIssue[] = [];
-  const add: Add = (path, msg) => issues.push({ path, message: msg });
-  if (!isObject(value)) return [{ path: "", message: "event must be an object" }];
+export function validateStreamEvent(value: unknown): Issue[] {
+  const { issues, add } = collector();
+  if (!isObject(value)) {
+    wrongType(add, "", value, "event must be an object");
+    return issues;
+  }
   const e = value;
-  if (typeof e.type !== "string") return [{ path: "type", message: "must be a string" }];
-  if (!(STREAM_EVENT_TYPES as readonly string[]).includes(e.type)) return [{ path: "type", message: "unknown stream event type" }];
+  if (typeof e.type !== "string") {
+    wrongType(add, "type", e.type, "must be a string");
+    return issues;
+  }
+  if (!(STREAM_EVENT_TYPES as readonly string[]).includes(e.type)) {
+    add("type", "enum", "unknown stream event type", didYouMean(e.type, STREAM_EVENT_TYPES));
+    return issues;
+  }
   text(add, "request_id", e.request_id);
   count(add, "sequence", e.sequence);
   switch (e.type) {

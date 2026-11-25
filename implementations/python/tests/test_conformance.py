@@ -7,11 +7,13 @@ from pathlib import Path
 from typing import Any
 
 from super_protocol import (
+    ISSUE_CODES,
     PLOT_FALLBACK_MESSAGE,
     PLUGIN_TOOL_PRESETS,
     SSEParser,
     StreamFrameTooLarge,
     can_place_card,
+    did_you_mean,
     format_card_ref,
     inference_stream_outcome,
     is_card_placement,
@@ -58,6 +60,12 @@ class Conformance(unittest.TestCase):
         for i, case in enumerate(cases):
             with self.subTest(case=key, i=i):
                 self.assertEqual(fn(case), case["expect"])
+
+    def test_issue_codes(self) -> None:
+        self.assertEqual(list(ISSUE_CODES), DATA["issue_codes"]["codes"])
+
+    def test_did_you_mean(self) -> None:
+        self.check("did_you_mean", lambda c: did_you_mean(c["value"], c["allowed"]), 25)
 
     def test_plugin_manifest(self) -> None:
         self.check("plugin_manifest", lambda c: validate_plugin_manifest(c["value"]), 100)

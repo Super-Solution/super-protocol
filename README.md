@@ -33,6 +33,8 @@ licenses**. This repository is that neutral ground:
   arguments. Pinned by `conformance/agent-loop.v0.json` and `conformance/tool-repair.v0.json`, which a TypeScript machine,
   a Rust crate and Super Chat's real `runAgent` are all tested against, plus a shadow replay of whole runs from wire bytes
   (`conformance/agent-loop-replay.v0.json`, expected values produced by `runAgent`; see [`docs/AGENT-LOOP.md`](docs/AGENT-LOOP.md)).
+- **Issues**: every validator returns all its problems as `{ path, code, message, hint? }`, where `code` is one of a closed
+  set of 13 words that is the same in all three languages (see [`docs/ISSUES.md`](docs/ISSUES.md)).
 - **Card references**: the `ref:` link that lets text in a message point into a card, and the `ref()` method a card
   answers it with (see [`docs/CARD-REFS.md`](docs/CARD-REFS.md)).
 - **Card placement**: the same card shown inline in a conversation, in a host's side panel or inside a

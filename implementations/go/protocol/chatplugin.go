@@ -2,10 +2,7 @@
 
 package protocol
 
-import (
-	"fmt"
-	"strings"
-)
+import "fmt"
 
 // PluginToolAuthorities are what running a tool can do: "read" changes nothing, "draft" produces something the user
 // reviews, "act" changes or removes existing state on the user's behalf.
@@ -33,13 +30,14 @@ func PluginToolAuthority(tool any) (authority string, ok bool) {
 // implemented, and the authority and confirm of each tool. plugin is decoded JSON of the form
 // {manifest, cardKinds?: [{kind}], mounts?: [kind, ...], tools?: [{name, authority?, confirm?}]}: "mounts" lists the
 // card kinds the plugin has a mount function for. The TypeScript reference takes the plugin object itself.
-func ValidateChatPluginData(plugin any) []ManifestIssue {
-	manifest, _ := get(plugin, "manifest")
+func ValidateChatPluginData(plugin any) []Issue {
+	manifest := field(plugin, "manifest")
 	issues := ValidatePluginManifest(manifest)
 	if len(issues) > 0 {
 		return issues
 	}
-	add := func(path, message string) { issues = append(issues, ManifestIssue{Path: path, Message: message}) }
+	c := &checker{issues: issues}
+	add := func(path, message string) { c.add(path, CodeReference, message) }
 	kinds, mounts, tools := map[string]bool{}, map[string]bool{}, map[string]bool{}
 	cardKinds, _ := get(plugin, "cardKinds")
 	if list, ok := cardKinds.([]any); ok {
@@ -97,18 +95,16 @@ func ValidateChatPluginData(plugin any) []ManifestIssue {
 	}
 	for i, t := range toolItems {
 		// A missing authority is allowed so older plugins still load; hosts keep such a tool out of every preset.
-		if _, present := get(t, "authority"); present {
+		if authority := field(t, "authority"); !isUndefined(authority) {
 			if _, ok := PluginToolAuthority(t); !ok {
-				add(fmt.Sprintf("tools[%d].authority", i), "must be one of "+strings.Join(PluginToolAuthorities, ", "))
+				c.oneOf(fmt.Sprintf("tools[%d].authority", i), authority, PluginToolAuthorities)
 			}
 		}
-		if confirm, present := get(t, "confirm"); present {
-			if _, ok := confirm.(bool); !ok {
-				add(fmt.Sprintf("tools[%d].confirm", i), "must be a boolean")
-			}
+		if confirm := field(t, "confirm"); !isUndefined(confirm) {
+			c.boolean(fmt.Sprintf("tools[%d].confirm", i), confirm)
 		}
 	}
-	return issues
+	return c.issues
 }
 
 // PanelCardKinds are the card kinds a plugin declared for the side panel: its "panel" capabilities that name one.

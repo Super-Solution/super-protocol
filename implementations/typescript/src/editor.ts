@@ -3,7 +3,9 @@
  * validator. The editor package (any license) implements the renderer; hosts
  * and agents only need this file to produce and route the card.
  */
-import type { CardKindDefinition, CardValidationResult } from "./chat.js";
+import { cardResult, type CardKindDefinition, type CardValidationResult } from "./chat.js";
+import { isHttpUrl, isObject, oneOf, str, text, wrongType } from "./check.js";
+import { collector } from "./issue.js";
 
 export const EDITOR_CARD_KIND = "super-editor.document";
 
@@ -20,37 +22,43 @@ export interface EditorCardSpec {
   service?: { baseUrl: string; documentId: string };
 }
 
-const fail = (error: string, expected?: string): CardValidationResult => (expected ? { ok: false, error, expected } : { ok: false, error });
+const MODES = ["view", "edit"] as const;
+const DOCUMENT = "document must be a schemaVersion 1 report document with id, title and blocks.";
+const SERVICE = "service needs an http(s) baseUrl and a documentId.";
 
 export function validateEditorCardSpec(spec: unknown): CardValidationResult {
-  if (typeof spec !== "object" || spec === null || Array.isArray(spec)) return fail("Editor card spec must be an object.");
-  const s = spec as Record<string, unknown>;
-  if (s.kind !== EDITOR_CARD_KIND) return fail(`kind must be "${EDITOR_CARD_KIND}".`);
-  if (s.title !== undefined && typeof s.title !== "string") return fail("title must be a string.");
-  if (s.mode !== undefined && s.mode !== "view" && s.mode !== "edit") return fail('mode must be "view" or "edit".');
-  const hasDocument = s.document !== undefined;
-  const hasService = s.service !== undefined;
-  if (hasDocument === hasService) return fail("Provide exactly one of `document` or `service`.", "document: {...} | service: { baseUrl, documentId }");
-  if (hasService && s.mode === "edit") return fail("A service-backed document is read-only for now: use an inline document to edit.");
-  if (hasDocument) {
-    const d = s.document as Record<string, unknown> | null;
-    if (typeof d !== "object" || d === null || d.schemaVersion !== 1 || typeof d.id !== "string" || typeof d.title !== "string" || !Array.isArray(d.blocks)) {
-      return fail("document must be a schemaVersion 1 report document with id, title and blocks.");
-    }
-  } else {
-    const v = s.service as Record<string, unknown> | null;
-    let ok = false;
-    if (typeof v === "object" && v !== null && typeof v.baseUrl === "string" && typeof v.documentId === "string" && v.documentId !== "") {
-      try {
-        const u = new URL(v.baseUrl);
-        ok = u.protocol === "https:" || u.protocol === "http:";
-      } catch {
-        /* invalid URL */
-      }
-    }
-    if (!ok) return fail("service needs an http(s) baseUrl and a documentId.");
+  const { issues, add } = collector();
+  if (!isObject(spec)) {
+    wrongType(add, "", spec, "Editor card spec must be an object.");
+    return cardResult(issues);
   }
-  return { ok: true };
+  oneOf(add, "kind", spec.kind, [EDITOR_CARD_KIND], `kind must be "${EDITOR_CARD_KIND}".`);
+  if (spec.title !== undefined) str(add, "title", spec.title, "title must be a string.");
+  if (spec.mode !== undefined) oneOf(add, "mode", spec.mode, MODES, 'mode must be "view" or "edit".');
+  const hasDocument = spec.document !== undefined;
+  const hasService = spec.service !== undefined;
+  if (hasDocument === hasService) add("", "exclusive", "Provide exactly one of `document` or `service`.", "document: {...} | service: { baseUrl, documentId }");
+  if (hasService && spec.mode === "edit") add("mode", "exclusive", "A service-backed document is read-only for now: use an inline document to edit.");
+  if (hasDocument) {
+    const d = spec.document;
+    if (!isObject(d)) wrongType(add, "document", d, DOCUMENT);
+    else {
+      if (d.schemaVersion !== 1) add("document.schemaVersion", d.schemaVersion === undefined ? "required" : "enum", DOCUMENT);
+      if (typeof d.id !== "string") wrongType(add, "document.id", d.id, DOCUMENT);
+      if (typeof d.title !== "string") wrongType(add, "document.title", d.title, DOCUMENT);
+      if (!Array.isArray(d.blocks)) wrongType(add, "document.blocks", d.blocks, DOCUMENT);
+    }
+  }
+  if (hasService) {
+    const v = spec.service;
+    if (!isObject(v)) wrongType(add, "service", v, SERVICE);
+    else {
+      if (typeof v.baseUrl !== "string") wrongType(add, "service.baseUrl", v.baseUrl, SERVICE);
+      else if (!isHttpUrl(v.baseUrl)) add("service.baseUrl", "format", SERVICE);
+      text(add, "service.documentId", v.documentId, SERVICE);
+    }
+  }
+  return cardResult(issues);
 }
 
 export const editorCardKind: CardKindDefinition = {

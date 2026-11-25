@@ -6,8 +6,10 @@
 // package. implementations/typescript/src/conformance.test.ts fails if the file drifts from the reference.
 import { writeFileSync } from "node:fs";
 import {
+  ISSUE_CODES,
   PLUGIN_TOOL_PRESETS,
   THEME_TOKENS,
+  didYouMean,
   formatCardRef,
   inferenceStreamOutcome,
   panelCardKinds,
@@ -185,6 +187,13 @@ for (const service of [
   { baseUrl: "https://example.com", extra: true },
 ])
   manifests.push(mut(manifest, (m) => (m.service = service)));
+// A typo near a valid word gets a "did you mean" hint, and several problems come back together.
+manifests.push(
+  mut(manifest, (m) => (m.capabilities[0].surface = "cardd")),
+  mut(manifest, (m) => (m.capabilities[1].surface = "tol")),
+  mut(manifest, (m) => ((m.name = 5), (m.version = "1"), (m.license = " "), (m.capabilities = []))),
+  mut(manifest, (m) => ((m.manifestVersion = 2), (m.service = { baseUrl: 3 }), (m.capabilities = [null, { id: "x", surface: "bogus" }]))),
+);
 const manifestCases = manifests.map((value) => ({ value, expect: validatePluginManifest(value) }));
 
 // ---- editor card -----------------------------------------------------------------------------
@@ -229,6 +238,11 @@ const editors = [
   7,
   {},
 ];
+editors.push(
+  mut(editor, (s) => (s.mode = "veiw")),
+  mut(editor, (s) => ((s.kind = 3), (s.title = 4), (s.mode = "x"), delete s.document)),
+  { kind: "super-editor.document", mode: "edit", service: { baseUrl: "nope", documentId: "" }, document: { schemaVersion: 2 } },
+);
 const editorCases = editors.map((value) => ({ value, expect: validateEditorCardSpec(value) }));
 
 // ---- chart card ------------------------------------------------------------------------------
@@ -477,6 +491,13 @@ for (const annotations of [
 ])
   charts.push(mut(chart, (s) => (s.annotations = annotations)));
 charts.push(null, [], "x", 3, {}, { kind: "super-chart.chart" });
+charts.push(
+  mut(chart, (s) => (s.chartType = "candle")),
+  mut(chart, (s) => ((s.id = ""), (s.title = 1), (s.symbol = {}), (s.period = {}), (s.height = 5), (s.chartType = "x"))),
+  mut(chart, (s) => (s.bars = [bar(2000, 1, 2, 3, 4), bar(1000, "x", 2, 1, 1), bar(1000, 1, 2, 1, 1), null])),
+  mut(chart, (s) => (s.annotations = [lvl("a", { tone: "bul", color: 5 }), lvl("a", { text: 5 }), { key: 1, kind: "zone", anchors: [{ time: "x" }, null, { time: 1, price: "p" }] }])),
+  mut(chart, (s) => ((s.indicators = [null, { name: "", params: [1, "x"] }, { params: 3 }]), (s.feed = { id: " " }))),
+);
 const chartCases = charts.map((value) => ({ value, expect: validateChartCardSpec(value) }));
 
 // ---- plot card -------------------------------------------------------------------------------
@@ -512,6 +533,7 @@ for (const alt of [undefined, null, "", "   ", "\t\n", 5, [], {}, "a", "a".repea
 plots.push(mut(plot, (s) => (delete s.spec, delete s.alt)));
 plots.push(mut(plot, (s) => (s.spec = null, s.alt = null)));
 plots.push(null, [], "x", 3, true, {}, { kind: "super.plot" }, { kind: "super.plot", spec: {} }, { kind: "super.plot", alt: "a" });
+plots.push(mut(plot, (s) => ((s.kind = "super.plt"), (s.id = ""), (s.title = 1), (s.height = 1), (s.spec = 1), (s.alt = ""))));
 const plotCases = plots.map((value) => ({ value, expect: validatePlotCardSpec(value) }));
 
 // ---- terminal events -------------------------------------------------------------------------
@@ -609,6 +631,11 @@ runEventValues.push(
   { type: "error", recoverable: true },
   { type: "error", error: "boom", recoverable: "no" },
   { type: "text-delta", delta: "x", extra: { kept: true } },
+);
+runEventValues.push(
+  { type: "text-delat", delta: "x" },
+  { type: "run-finish", runId: "", finishReason: "stp", usage: 3, steps: -1 },
+  { type: "run-start", runId: 1, mode: "strem" },
 );
 const runEventSeen = new Set();
 const runEventCases = runEventValues
@@ -1332,6 +1359,11 @@ for (const v of [0, 1, 512, -1, 1.5, "512", null, true, [], {}]) {
   requests.push(mut(request, (r) => (r.timeout_ms = v)));
 }
 requests.push(null, [], "x", 5, true, {}, { messages: [] }, { service: "s", customer_id: "c", messages: "x", tools: 5, tool_choice: 7, max_output_tokens: 0, timeout_ms: 0 });
+requests.push(
+  { ...request, tool_choice: "requird" },
+  { ...request, tool_choice: 3 },
+  { service: 1, customer_id: "", messages: [], tools: [null, { name: "bad name", input_schema: { type: "string" } }], max_output_tokens: 0 },
+);
 const inferenceRequestCases = requests.map((value) => ({ value: clone(value), expect: validateInferenceRequest(clone(value)) }));
 
 const meters = { input: 10, cached: 4, cache_write: 2, output: 7 };
@@ -1386,6 +1418,10 @@ streamValues.push(
   { type: "run-start", runId: "r", mode: "stream" },
   { request_id: "r", sequence: 0 },
 );
+streamValues.push(
+  { type: "output.delat", request_id: "r", sequence: 0 },
+  { type: "request.completed", request_id: "", sequence: -1, execution_status: "succeded", billing_status: 3, finish_reason: "stp", usage: 5 },
+);
 const streamSeen = new Set();
 const streamEventCases = streamValues
   .filter((value) => {
@@ -1418,9 +1454,45 @@ const inferenceStreams = [
 ];
 const inferenceStreamCases = inferenceStreams.map((events) => ({ events, expect: inferenceStreamOutcome(clone(events)) }));
 
+// ---- did you mean ----------------------------------------------------------------------------
+// The hint of an `enum` issue: the closest allowed value within two edits (counted in code points), or none.
+const modes = ["stream", "sync", "background"];
+const didYouMeanCases = [
+  ["strem", modes],
+  ["stream", modes],
+  ["Stream", modes],
+  ["snyc", modes],
+  ["sync ", modes],
+  ["batch", modes],
+  ["", ["a", "ab"]],
+  ["", ["abc"]],
+  ["ab", ["ac", "ad"]],
+  ["ad", ["ac", "ab"]],
+  ["abc", ["abd", "abe"]],
+  ["abcd", ["ab"]],
+  ["abcde", ["ab"]],
+  ["日本語", ["日本"]],
+  ["日本語", ["日本酒"]],
+  ["😀😀", ["😀"]],
+  ["😀x", ["x😀"]],
+  ["é", ["e"]],
+  ["Run-Finish", ["run-finish"]],
+  ["tool_call", ["tool-call", "tool_calls"]],
+  ["x", []],
+  ["a", ["b", "c"]],
+  ["a", ["bc", "a b"]],
+  [7, modes],
+  [null, modes],
+  [[], modes],
+  [{}, modes],
+  [true, ["true"]],
+].map(([value, allowed]) => ({ value, allowed, expect: didYouMean(value, allowed) ?? null }));
+
 const out = {
   version: 1,
-  note: "Generated by scripts/export-conformance.mjs from the TypeScript reference in implementations/typescript/. Manifest and card validators (editor, chart, plot) return their issue lists or result objects as is; sse chunks are hex-encoded bytes. run_event holds issue lists, run_event_type whether a type is known and whether it ends a run, run_stream_outcome what a stopped stream says about its run. plot_fallback_message is the text a user sees in place of a plot that cannot be drawn. card_placement says whether a value is a placement and whether a kind (interactive true or false, null for no definition) may be shown there. host_theme: what readHostTheme keeps and the CSS variables themeVariables makes of it. tool_authority: the declared authority of a tool and the presets that grant it. chat_plugin: validateChatPlugin on the data of a plugin (its manifest, the card kinds it defines, the kinds it has a mount for, its tools) and the card kinds its manifest declares for the side panel. inference_message, inference_request and stream_event are issue lists; inference_stream_outcome is what a stopped gateway stream says about its request.",
+  note: "Generated by scripts/export-conformance.mjs from the TypeScript reference in implementations/typescript/. Every issue is {path, code, message} and, when there is something to add, hint (left out when there is none); issue_codes is the closed set of codes and did_you_mean the hint of an enum issue (null when nothing is close). Manifest validators return their issue lists as is; card validators (editor, chart, plot) return {ok, error, expected?, issues} where error is the first issue message and expected its hint when the code is required or exclusive; sse chunks are hex-encoded bytes. run_event holds issue lists, run_event_type whether a type is known and whether it ends a run, run_stream_outcome what a stopped stream says about its run. plot_fallback_message is the text a user sees in place of a plot that cannot be drawn. card_placement says whether a value is a placement and whether a kind (interactive true or false, null for no definition) may be shown there. host_theme: what readHostTheme keeps and the CSS variables themeVariables makes of it. tool_authority: the declared authority of a tool and the presets that grant it. chat_plugin: validateChatPlugin on the data of a plugin (its manifest, the card kinds it defines, the kinds it has a mount for, its tools) and the card kinds its manifest declares for the side panel. inference_message, inference_request and stream_event are issue lists; inference_stream_outcome is what a stopped gateway stream says about its request.",
+  issue_codes: { codes: [...ISSUE_CODES] },
+  did_you_mean: didYouMeanCases,
   plugin_manifest: manifestCases,
   editor_card: editorCases,
   chart_card: chartCases,
@@ -1446,7 +1518,8 @@ const lines = (key) => out[key].map((c) => "  " + JSON.stringify(c)).join(",\n")
 const body =
   `{\n "version": 1,\n "note": ${JSON.stringify(out.note)},\n` +
   ` "plot_fallback_message": ${JSON.stringify(PLOT_FALLBACK_MESSAGE)},\n` +
-  ["plugin_manifest", "editor_card", "chart_card", "plot_card", "card_ref_parse", "card_ref_format", "chart_ref", "terminal_event", "run_event", "run_event_type", "run_stream_outcome", "card_placement", "host_theme", "tool_authority", "chat_plugin", "inference_message", "inference_request", "stream_event", "inference_stream_outcome", "sse"]
+  ` "issue_codes": ${JSON.stringify(out.issue_codes)},\n` +
+  ["did_you_mean", "plugin_manifest", "editor_card", "chart_card", "plot_card", "card_ref_parse", "card_ref_format", "chart_ref", "terminal_event", "run_event", "run_event_type", "run_stream_outcome", "card_placement", "host_theme", "tool_authority", "chat_plugin", "inference_message", "inference_request", "stream_event", "inference_stream_outcome", "sse"]
     .map((k) => ` "${k}": [\n${lines(k)}\n ]`)
     .join(",\n") +
   "\n}\n";

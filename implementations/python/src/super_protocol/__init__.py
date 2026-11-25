@@ -8,6 +8,7 @@ from .chat_plugin import (
     plugin_tool_authority,
     validate_chat_plugin_data,
 )
+from .issue import ISSUE_CODES, Issue, ManifestIssue, did_you_mean
 from .placement import CARD_PLACEMENTS, can_place_card, is_card_placement
 from .ref import CARD_REF_LIMITS, CARD_REF_SCHEME, CardRef, format_card_ref, parse_card_ref, parse_chart_ref
 from .router import (
@@ -53,7 +54,6 @@ from .validators import (
     PLOT_LIMITS,
     PLUGIN_MANIFEST_VERSION,
     CardResult,
-    ManifestIssue,
     is_terminal_event,
     validate_chart_annotation,
     validate_chart_annotations,
@@ -67,6 +67,9 @@ from .validators import (
 )
 
 __all__ = [
+    "ISSUE_CODES",
+    "Issue",
+    "did_you_mean",
     "EXECUTION_STATUSES",
     "INFERENCE_FINISH_REASONS",
     "INFERENCE_ROLES",

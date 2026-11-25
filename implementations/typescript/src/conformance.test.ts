@@ -5,7 +5,9 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  ISSUE_CODES,
   PLUGIN_TOOL_PRESETS,
+  didYouMean,
   canPlaceCard,
   inferenceStreamOutcome,
   panelCardKinds,
@@ -35,7 +37,36 @@ import {
 
 const data = JSON.parse(readFileSync(new URL("../../../conformance/protocol.v1.json", import.meta.url), "utf8"));
 
+/** Every issue (path, code, message, hint) in an expectation: a list of issues, or a card result that carries them. */
+function issuesIn(expect: unknown): Array<Record<string, unknown>> {
+  if (Array.isArray(expect)) return expect;
+  const issues = (expect as { issues?: unknown } | null)?.issues;
+  return Array.isArray(issues) ? issues : [];
+}
+
 describe("conformance data", () => {
+  it("issue codes", () => {
+    expect(data.issue_codes.codes).toEqual([...ISSUE_CODES]);
+    const seen = new Set<unknown>();
+    for (const key of ["plugin_manifest", "editor_card", "chart_card", "plot_card", "run_event", "chat_plugin", "inference_message", "inference_request", "stream_event"]) {
+      for (const c of data[key]) {
+        for (const i of issuesIn(key === "chat_plugin" ? c.expect.issues : c.expect)) {
+          expect(Object.keys(i).filter((k) => !["path", "code", "message", "hint"].includes(k))).toEqual([]);
+          expect(ISSUE_CODES, `${key}: ${JSON.stringify(i)}`).toContain(i.code);
+          if ("hint" in i) expect(typeof i.hint).toBe("string");
+          seen.add(i.code);
+        }
+        // A card result's `error` is the first issue's message.
+        if (c.expect?.ok === false) expect(c.expect.error).toBe(c.expect.issues[0].message);
+      }
+    }
+    // Every code in the vocabulary is exercised by the data, so a port cannot leave one out unnoticed.
+    expect([...ISSUE_CODES].filter((code) => !seen.has(code))).toEqual([]);
+  });
+  it("did you mean", () => {
+    expect(data.did_you_mean.length).toBeGreaterThanOrEqual(25);
+    for (const c of data.did_you_mean) expect(didYouMean(c.value, c.allowed) ?? null).toEqual(c.expect);
+  });
   it("plugin manifest", () => {
     expect(data.plugin_manifest.length).toBeGreaterThanOrEqual(100);
     for (const c of data.plugin_manifest) expect(validatePluginManifest(c.value)).toEqual(c.expect);

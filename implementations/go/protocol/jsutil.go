@@ -29,6 +29,8 @@ func isObject(v any) bool { _, ok := v.(map[string]any); return ok }
 
 func isString(v any) bool { _, ok := v.(string); return ok }
 
+func isList(v any) bool { _, ok := v.([]any); return ok }
+
 func asString(v any) (string, bool) { s, ok := v.(string); return s, ok }
 
 func finite(v any) bool {

@@ -21,6 +21,7 @@ var (
 	}
 
 	imageDetails = []string{"auto", "low", "high"}
+	toolChoices  = []string{"auto", "none", "required"}
 	toolNameRe   = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 	dataImageRe  = regexp.MustCompile(`^data:image/(png|jpeg|gif|webp);base64,[A-Za-z0-9+/]+={0,2}$`)
 	usageMeters  = []string{"input", "cached", "cache_write", "output"}
@@ -39,40 +40,48 @@ const (
 )
 
 func (c *checker) toolName(path string, v any) {
-	if s, ok := asString(v); !ok || !toolNameRe.MatchString(s) {
-		c.add(path, "must be 1 to 64 letters, digits, _ or -")
+	message := "must be 1 to 64 letters, digits, _ or -"
+	if s, ok := asString(v); !ok {
+		c.wrongType(path, v, message)
+	} else if !toolNameRe.MatchString(s) {
+		c.add(path, CodeFormat, message)
 	}
 }
 
 func (c *checker) positive(path string, v any) {
-	if !(isInteger(v) && v.(float64) >= 1) {
-		c.add(path, "must be a positive integer")
+	message := "must be a positive integer"
+	if _, ok := v.(float64); !ok {
+		c.wrongType(path, v, message)
+	} else if !(isInteger(v) && v.(float64) >= 1) {
+		c.add(path, CodeRange, message)
 	}
 }
 
 func (c *checker) contentParts(path string, list []any) {
 	if len(list) == 0 {
-		c.add(path, "must not be empty")
+		c.add(path, CodeEmpty, "must not be empty")
 		return
 	}
 	for i, part := range list {
 		p := fmt.Sprintf("%s[%d]", path, i)
 		if !isObject(part) {
-			c.add(p, "must be an object")
+			c.wrongType(p, part, "must be an object")
 			continue
 		}
-		partType, _ := get(part, "type")
+		partType := field(part, "type")
 		c.oneOf(p+".type", partType, []string{"text", "image"})
 		switch partType {
 		case "text":
-			text, _ := get(part, "text")
-			c.str(p+".text", text)
+			c.str(p+".text", field(part, "text"))
 		case "image":
-			url, _ := get(part, "url")
-			if s, ok := asString(url); !ok || !(isHTTPSURL(s) || dataImageRe.MatchString(s)) {
-				c.add(p+".url", "must be an https URL or a data:image URL (png, jpeg, gif or webp, base64)")
+			message := "must be an https URL or a data:image URL (png, jpeg, gif or webp, base64)"
+			url := field(part, "url")
+			if s, ok := asString(url); !ok {
+				c.wrongType(p+".url", url, message)
+			} else if !(isHTTPSURL(s) || dataImageRe.MatchString(s)) {
+				c.add(p+".url", CodeFormat, message)
 			}
-			if detail, present := get(part, "detail"); present {
+			if detail := field(part, "detail"); !isUndefined(detail) {
 				c.oneOf(p+".detail", detail, imageDetails)
 			}
 		}
@@ -82,29 +91,27 @@ func (c *checker) contentParts(path string, list []any) {
 func (c *checker) toolCalls(path string, v any, made map[string]bool) {
 	list, ok := v.([]any)
 	if !ok {
-		c.add(path, "must be an array")
+		c.wrongType(path, v, "must be an array")
 		return
 	}
 	if len(list) == 0 {
-		c.add(path, "must not be empty")
+		c.add(path, CodeEmpty, "must not be empty")
 		return
 	}
 	own := map[string]bool{}
 	for i, call := range list {
 		p := fmt.Sprintf("%s[%d]", path, i)
 		if !isObject(call) {
-			c.add(p, "must be an object")
+			c.wrongType(p, call, "must be an object")
 			continue
 		}
-		id, _ := get(call, "id")
+		id := field(call, "id")
 		c.text(p+".id", id)
-		name, _ := get(call, "name")
-		c.toolName(p+".name", name)
-		args, _ := get(call, "arguments")
-		c.str(p+".arguments", args)
+		c.toolName(p+".name", field(call, "name"))
+		c.str(p+".arguments", field(call, "arguments"))
 		if s, ok := asString(id); ok && s != "" {
 			if own[s] {
-				c.add(p+".id", "duplicate tool call id")
+				c.add(p+".id", CodeUnique, "duplicate tool call id")
 			}
 			own[s] = true
 		}
@@ -118,7 +125,7 @@ func (c *checker) toolCalls(path string, v any, made map[string]bool) {
 // check that a tool result answers one of them.
 func (c *checker) message(path string, v any, made map[string]bool) {
 	if !isObject(v) {
-		c.add(path, "must be an object")
+		c.wrongType(path, v, "must be an object")
 		return
 	}
 	at := func(key string) string {
@@ -127,42 +134,42 @@ func (c *checker) message(path string, v any, made map[string]bool) {
 		}
 		return path + "." + key
 	}
-	field := func(key string) any { x, _ := get(v, key); return x }
-	role, _ := asString(field("role"))
+	role, _ := asString(field(v, "role"))
 	if !contains(InferenceRoles, role) {
-		c.oneOf(at("role"), field("role"), InferenceRoles)
+		c.oneOf(at("role"), field(v, "role"), InferenceRoles)
 		return
 	}
 	switch role {
 	case "system":
-		c.str(at("content"), field("content"))
+		c.str(at("content"), field(v, "content"))
 	case "user":
-		if list, ok := field("content").([]any); ok {
+		content := field(v, "content")
+		if list, ok := content.([]any); ok {
 			c.contentParts(at("content"), list)
-		} else if !isString(field("content")) {
-			c.add(at("content"), "must be a string or an array of content parts")
+		} else if !isString(content) {
+			c.wrongType(at("content"), content, "must be a string or an array of content parts")
 		}
 	case "assistant":
-		if calls, present := get(v, "tool_calls"); present {
+		if calls := field(v, "tool_calls"); !isUndefined(calls) {
 			own := made
 			if own == nil {
 				own = map[string]bool{}
 			}
 			c.toolCalls(at("tool_calls"), calls, own)
-			if content, present := get(v, "content"); present {
+			if content := field(v, "content"); !isUndefined(content) {
 				c.str(at("content"), content)
 			}
 		} else {
-			c.str(at("content"), field("content"))
+			c.str(at("content"), field(v, "content"))
 		}
 	default:
-		c.text(at("tool_call_id"), field("tool_call_id"))
-		c.str(at("content"), field("content"))
-		if isError, present := get(v, "is_error"); present {
+		c.text(at("tool_call_id"), field(v, "tool_call_id"))
+		c.str(at("content"), field(v, "content"))
+		if isError := field(v, "is_error"); !isUndefined(isError) {
 			c.boolean(at("is_error"), isError)
 		}
-		if id, ok := asString(field("tool_call_id")); made != nil && ok && id != "" && !made[id] {
-			c.add(at("tool_call_id"), "no earlier assistant message made this tool call")
+		if id, ok := asString(field(v, "tool_call_id")); made != nil && ok && id != "" && !made[id] {
+			c.add(at("tool_call_id"), CodeReference, "no earlier assistant message made this tool call")
 		}
 	}
 }
@@ -170,75 +177,89 @@ func (c *checker) message(path string, v any, made map[string]bool) {
 // ValidateInferenceMessage checks one message on its own: its role, its content and, for an assistant, its tool calls.
 // Whether a tool result answers a call an earlier message made needs the whole conversation; ValidateInferenceRequest
 // checks it.
-func ValidateInferenceMessage(value any) []ManifestIssue {
-	c := &checker{issues: []ManifestIssue{}}
+func ValidateInferenceMessage(value any) []Issue {
+	c := newChecker()
 	c.message("", value, nil)
 	return c.issues
 }
 
 // ValidateInferenceRequest checks a request before it is sent: whether it is well formed, not whether a given gateway
 // can serve it.
-func ValidateInferenceRequest(value any) []ManifestIssue {
+func ValidateInferenceRequest(value any) []Issue {
+	c := newChecker()
 	if !isObject(value) {
-		return []ManifestIssue{{Path: "", Message: "request must be an object"}}
+		c.wrongType("", value, "request must be an object")
+		return c.issues
 	}
-	c := &checker{issues: []ManifestIssue{}}
-	field := func(key string) any { x, _ := get(value, key); return x }
-	c.text("service", field("service"))
-	if v, present := get(value, "service_version"); present {
+	c.text("service", field(value, "service"))
+	if v := field(value, "service_version"); !isUndefined(v) {
 		c.count("service_version", v)
 	}
-	c.text("customer_id", field("customer_id"))
-	if messages, ok := field("messages").([]any); !ok || len(messages) == 0 {
-		c.add("messages", "must be a non-empty array")
+	c.text("customer_id", field(value, "customer_id"))
+	messages := field(value, "messages")
+	if list, ok := messages.([]any); !ok {
+		c.wrongType("messages", messages, "must be a non-empty array")
+	} else if len(list) == 0 {
+		c.add("messages", CodeEmpty, "must be a non-empty array")
 	} else {
 		made := map[string]bool{}
-		for i, m := range messages {
+		for i, m := range list {
 			c.message(fmt.Sprintf("messages[%d]", i), m, made)
 		}
 	}
-	if tools, present := get(value, "tools"); present {
+	if tools := field(value, "tools"); !isUndefined(tools) {
 		list, ok := tools.([]any)
 		if !ok {
-			c.add("tools", "must be an array")
+			c.wrongType("tools", tools, "must be an array")
 		} else {
 			names := map[string]bool{}
 			for i, tool := range list {
 				p := fmt.Sprintf("tools[%d]", i)
 				if !isObject(tool) {
-					c.add(p, "must be an object")
+					c.wrongType(p, tool, "must be an object")
 					continue
 				}
-				name, _ := get(tool, "name")
+				name := field(tool, "name")
 				c.toolName(p+".name", name)
-				if d, present := get(tool, "description"); present {
+				if d := field(tool, "description"); !isUndefined(d) {
 					c.str(p+".description", d)
 				}
-				schema, _ := get(tool, "input_schema")
-				if t, _ := get(schema, "type"); !isObject(schema) || t != "object" {
-					c.add(p+".input_schema", `must be a JSON Schema object with type "object"`)
+				schema := field(tool, "input_schema")
+				message := `must be a JSON Schema object with type "object"`
+				if !isObject(schema) {
+					c.wrongType(p+".input_schema", schema, message)
+				} else if t := field(schema, "type"); t != "object" {
+					c.add(p+".input_schema", CodeShape, message)
 				}
 				if s, ok := asString(name); ok && toolNameRe.MatchString(s) {
 					if names[s] {
-						c.add(p+".name", "duplicate tool name")
+						c.add(p+".name", CodeUnique, "duplicate tool name")
 					}
 					names[s] = true
 				}
 			}
 		}
 	}
-	if choice, present := get(value, "tool_choice"); present {
+	if choice := field(value, "tool_choice"); !isUndefined(choice) {
 		if isObject(choice) {
-			name, _ := get(choice, "name")
-			c.toolName("tool_choice.name", name)
+			c.toolName("tool_choice.name", field(choice, "name"))
 		} else if choice != "auto" && choice != "none" && choice != "required" {
-			c.add("tool_choice", `must be "auto", "none", "required" or { name }`)
+			message := `must be "auto", "none", "required" or { name }`
+			if s, ok := choice.(string); ok {
+				if hint := DidYouMean(s, toolChoices); hint != "" {
+					c.addHint("tool_choice", CodeEnum, message, hint)
+				} else {
+					c.add("tool_choice", CodeEnum, message)
+				}
+			} else {
+				c.addHint("tool_choice", CodeType, message, "got "+jsonType(choice))
+			}
 		}
 	}
-	if v, present := get(value, "max_output_tokens"); present {
+	if v := field(value, "max_output_tokens"); !isUndefined(v) {
 		c.positive("max_output_tokens", v)
 	}
-	if v, present := get(value, "timeout_ms"); present {
+	if v := field(value, "timeout_ms"); !isUndefined(v) {
 		c.positive("timeout_ms", v)
 	}
 	return c.issues
@@ -246,25 +267,23 @@ func ValidateInferenceRequest(value any) []ManifestIssue {
 
 func (c *checker) inferenceUsage(path string, v any) {
 	if !isObject(v) {
-		c.add(path, "must be an object")
+		c.wrongType(path, v, "must be an object")
 		return
 	}
-	status, _ := get(v, "status")
-	c.text(path+".status", status)
-	meters, present := get(v, "meters")
-	if !present {
+	c.text(path+".status", field(v, "status"))
+	meters := field(v, "meters")
+	if isUndefined(meters) {
 		return
 	}
 	if !isObject(meters) {
-		c.add(path+".meters", "must be an object")
+		c.wrongType(path+".meters", meters, "must be an object")
 		return
 	}
 	for _, k := range usageMeters {
-		n, _ := get(meters, k)
-		c.count(path+".meters."+k, n)
+		c.count(path+".meters."+k, field(meters, k))
 	}
 	for _, k := range usageExtras {
-		if n, present := get(meters, k); present {
+		if n := field(meters, k); !isUndefined(n) {
 			c.count(path+".meters."+k, n)
 		}
 	}
@@ -272,66 +291,72 @@ func (c *checker) inferenceUsage(path string, v any) {
 
 // ValidateStreamEvent checks one stream event of the gateway. It is for whoever produces events; a consumer skips a
 // type it does not know (see InferenceStreamOutcomeOf), since later versions add types.
-func ValidateStreamEvent(value any) []ManifestIssue {
+func ValidateStreamEvent(value any) []Issue {
+	c := newChecker()
 	if !isObject(value) {
-		return []ManifestIssue{{Path: "", Message: "event must be an object"}}
+		c.wrongType("", value, "event must be an object")
+		return c.issues
 	}
-	typeValue, _ := get(value, "type")
+	typeValue := field(value, "type")
 	eventType, ok := asString(typeValue)
 	if !ok {
-		return []ManifestIssue{{Path: "type", Message: "must be a string"}}
+		c.wrongType("type", typeValue, "must be a string")
+		return c.issues
 	}
 	if !contains(StreamEventTypes, eventType) {
-		return []ManifestIssue{{Path: "type", Message: "unknown stream event type"}}
+		if hint := DidYouMean(eventType, StreamEventTypes); hint != "" {
+			c.addHint("type", CodeEnum, "unknown stream event type", hint)
+		} else {
+			c.add("type", CodeEnum, "unknown stream event type")
+		}
+		return c.issues
 	}
-	c := &checker{issues: []ManifestIssue{}}
-	field := func(key string) any { x, _ := get(value, key); return x }
-	c.text("request_id", field("request_id"))
-	c.count("sequence", field("sequence"))
+	ev := func(key string) any { return field(value, key) }
+	c.text("request_id", ev("request_id"))
+	c.count("sequence", ev("sequence"))
 	switch eventType {
 	case "request.started":
-		c.count("service_version", field("service_version"))
+		c.count("service_version", ev("service_version"))
 	case "output.delta":
-		c.str("text", field("text"))
+		c.str("text", ev("text"))
 	case "output.tool_call.delta":
-		c.count("index", field("index"))
-		if id, present := get(value, "id"); present {
+		c.count("index", ev("index"))
+		if id := ev("id"); !isUndefined(id) {
 			c.text("id", id)
 		}
-		if name, present := get(value, "name"); present {
+		if name := ev("name"); !isUndefined(name) {
 			c.toolName("name", name)
 		}
-		c.str("arguments_delta", field("arguments_delta"))
+		c.str("arguments_delta", ev("arguments_delta"))
 	case "output.tool_call.completed":
-		c.count("index", field("index"))
-		c.text("id", field("id"))
-		c.toolName("name", field("name"))
-		c.str("arguments", field("arguments"))
+		c.count("index", ev("index"))
+		c.text("id", ev("id"))
+		c.toolName("name", ev("name"))
+		c.str("arguments", ev("arguments"))
 	case "request.completed":
-		c.oneOf("execution_status", field("execution_status"), ExecutionStatuses)
-		c.text("billing_status", field("billing_status"))
-		if v, present := get(value, "finish_reason"); present {
+		c.oneOf("execution_status", ev("execution_status"), ExecutionStatuses)
+		c.text("billing_status", ev("billing_status"))
+		if v := ev("finish_reason"); !isUndefined(v) {
 			c.oneOf("finish_reason", v, InferenceFinishReasons)
 		}
-		if v, present := get(value, "usage"); present {
+		if v := ev("usage"); !isUndefined(v) {
 			c.inferenceUsage("usage", v)
 		}
 	case "request.failed":
-		if v, present := get(value, "execution_status"); present {
+		if v := ev("execution_status"); !isUndefined(v) {
 			c.oneOf("execution_status", v, ExecutionStatuses)
 		}
-		if v, present := get(value, "billing_status"); present {
+		if v := ev("billing_status"); !isUndefined(v) {
 			c.text("billing_status", v)
 		}
-		if e, present := get(value, "error"); present {
+		if e := ev("error"); !isUndefined(e) {
 			if !isObject(e) {
 				c.object("error", e)
 			} else {
-				code, _ := get(e, "code")
-				c.text("error.code", code)
+				c.text("error.code", field(e, "code"))
 			}
 		}
-		if v, present := get(value, "usage"); present {
+		if v := ev("usage"); !isUndefined(v) {
 			c.inferenceUsage("usage", v)
 		}
 	}

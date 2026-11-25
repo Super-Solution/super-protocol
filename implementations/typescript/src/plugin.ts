@@ -5,6 +5,9 @@
  * package, while the plugin itself may be GPL/AGPL or commercial.
  */
 
+import { filled, isHttpUrl, isObject, obj, oneOf, text, wrongType } from "./check.js";
+import { collector, jsonType, type Issue } from "./issue.js";
+
 export const PLUGIN_MANIFEST_VERSION = 0 as const;
 
 export type PluginSurface = "card" | "panel" | "tool" | "canvas";
@@ -47,42 +50,48 @@ const CAPABILITY_ID = /^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$/;
 const SURFACES: readonly string[] = ["card", "panel", "tool", "canvas"];
 
 /** Returns every problem found; an empty array means the manifest is valid. */
-export function validatePluginManifest(value: unknown): ManifestIssue[] {
-  const issues: ManifestIssue[] = [];
-  const add = (path: string, message: string) => issues.push({ path, message });
+export function validatePluginManifest(value: unknown): Issue[] {
+  const { issues, add } = collector();
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return [{ path: "", message: "manifest must be an object" }];
+    wrongType(add, "", value, "manifest must be an object");
+    return issues;
   }
   const m = value as Record<string, unknown>;
-  if (m.manifestVersion !== PLUGIN_MANIFEST_VERSION) add("manifestVersion", `must be ${PLUGIN_MANIFEST_VERSION}`);
-  if (typeof m.name !== "string" || !NAME.test(m.name)) add("name", "must be a valid npm package name");
-  if (typeof m.version !== "string" || !SEMVER.test(m.version)) add("version", "must be a semver string");
-  if (typeof m.license !== "string" || m.license.trim() === "") add("license", "must be a non-empty SPDX expression");
-  if (!Array.isArray(m.capabilities) || m.capabilities.length === 0) {
-    add("capabilities", "must be a non-empty array");
-  } else {
+  const pattern = (path: string, v: unknown, re: RegExp, message: string) => {
+    if (typeof v !== "string") wrongType(add, path, v, message);
+    else if (!re.test(v)) add(path, "format", message);
+  };
+  if (m.manifestVersion !== PLUGIN_MANIFEST_VERSION) {
+    if (m.manifestVersion === undefined) add("manifestVersion", "required", `must be ${PLUGIN_MANIFEST_VERSION}`);
+    else add("manifestVersion", "enum", `must be ${PLUGIN_MANIFEST_VERSION}`);
+  }
+  pattern("name", m.name, NAME, "must be a valid npm package name");
+  pattern("version", m.version, SEMVER, "must be a semver string");
+  filled(add, "license", m.license, "must be a non-empty SPDX expression");
+  if (!Array.isArray(m.capabilities)) wrongType(add, "capabilities", m.capabilities, "must be a non-empty array");
+  else if (m.capabilities.length === 0) add("capabilities", "empty", "must be a non-empty array");
+  else {
     const seen = new Set<string>();
     m.capabilities.forEach((c: unknown, i) => {
       const p = `capabilities[${i}]`;
-      if (typeof c !== "object" || c === null) return add(p, "must be an object");
+      if (typeof c !== "object" || c === null) return wrongType(add, p, c, "must be an object");
       const cap = c as Record<string, unknown>;
-      if (typeof cap.id !== "string" || !CAPABILITY_ID.test(cap.id)) add(`${p}.id`, "must be a dotted lowercase id such as editor.document");
-      else if (seen.has(cap.id)) add(`${p}.id`, "duplicate capability id");
+      if (typeof cap.id !== "string" || !CAPABILITY_ID.test(cap.id)) pattern(`${p}.id`, cap.id, CAPABILITY_ID, "must be a dotted lowercase id such as editor.document");
+      else if (seen.has(cap.id)) add(`${p}.id`, "unique", "duplicate capability id");
       else seen.add(cap.id);
-      if (typeof cap.surface !== "string" || !SURFACES.includes(cap.surface)) add(`${p}.surface`, `must be one of ${SURFACES.join(", ")}`);
-      if (cap.surface === "card" && (typeof cap.cardKind !== "string" || cap.cardKind === "")) add(`${p}.cardKind`, "is required for card capabilities");
-      if (cap.surface === "panel" && cap.cardKind !== undefined && (typeof cap.cardKind !== "string" || cap.cardKind === "")) add(`${p}.cardKind`, "must be a non-empty card kind when given");
-      if (cap.surface === "tool" && (typeof cap.toolName !== "string" || cap.toolName === "")) add(`${p}.toolName`, "is required for tool capabilities");
-      if (cap.inputSchema !== undefined && (typeof cap.inputSchema !== "object" || cap.inputSchema === null || Array.isArray(cap.inputSchema))) add(`${p}.inputSchema`, "must be an object");
+      oneOf(add, `${p}.surface`, cap.surface, SURFACES, `must be one of ${SURFACES.join(", ")}`);
+      if (cap.surface === "card") text(add, `${p}.cardKind`, cap.cardKind, "is required for card capabilities");
+      if (cap.surface === "panel" && cap.cardKind !== undefined) text(add, `${p}.cardKind`, cap.cardKind, "must be a non-empty card kind when given");
+      if (cap.surface === "tool") text(add, `${p}.toolName`, cap.toolName, "is required for tool capabilities");
+      if (cap.inputSchema !== undefined) obj(add, `${p}.inputSchema`, cap.inputSchema);
     });
   }
   if (m.service !== undefined) {
-    const s = m.service as Record<string, unknown> | null;
-    let ok = false;
-    if (s && typeof s === "object" && typeof s.baseUrl === "string") {
-      try { const u = new URL(s.baseUrl); ok = u.protocol === "https:" || u.protocol === "http:"; } catch { /* invalid */ }
-    }
-    if (!ok) add("service.baseUrl", "must be an http(s) URL");
+    const s = m.service;
+    const message = "must be an http(s) URL";
+    if (!isObject(s)) add("service.baseUrl", "type", message, `got ${jsonType(s)}`);
+    else if (typeof s.baseUrl !== "string") wrongType(add, "service.baseUrl", s.baseUrl, message);
+    else if (!isHttpUrl(s.baseUrl)) add("service.baseUrl", "format", message);
   }
   return issues;
 }

@@ -45,60 +45,52 @@ const (
 
 func (c *checker) usage(path string, v any) {
 	if !isObject(v) {
-		c.add(path, "must be an object")
+		c.wrongType(path, v, "must be an object")
 		return
 	}
-	for _, field := range runUsageFields {
-		if n, present := get(v, field); present && !isAmount(n) {
-			c.add(path+"."+field, "must be a non-negative number")
+	for _, name := range runUsageFields {
+		if n := field(v, name); !isUndefined(n) {
+			c.amount(path+"."+name, n)
 		}
 	}
 }
 
 func (c *checker) spec(path string, v any) {
 	if !isObject(v) {
-		c.add(path, "must be an object")
+		c.wrongType(path, v, "must be an object")
 		return
 	}
-	kind, _ := get(v, "kind")
-	c.text(path+".kind", kind)
+	c.text(path+".kind", field(v, "kind"))
 }
 
 func (c *checker) action(path string, v any) {
 	if !isObject(v) {
-		c.add(path, "must be an object")
+		c.wrongType(path, v, "must be an object")
 		return
 	}
-	cardID, _ := get(v, "cardId")
-	c.text(path+".cardId", cardID)
-	if callID, present := get(v, "callId"); present {
+	c.text(path+".cardId", field(v, "cardId"))
+	if callID := field(v, "callId"); !isUndefined(callID) {
 		c.text(path+".callId", callID)
 	}
-	kind, _ := get(v, "kind")
-	c.text(path+".kind", kind)
-	actionType, _ := get(v, "type")
-	c.oneOf(path+".type", actionType, RunCardActionTypes)
-	if at, _ := get(v, "at"); !isAmount(at) {
-		c.add(path+".at", "must be a non-negative number")
-	}
+	c.text(path+".kind", field(v, "kind"))
+	c.oneOf(path+".type", field(v, "type"), RunCardActionTypes)
+	c.amount(path+".at", field(v, "at"))
 }
 
 func (c *checker) card(path string, v any) {
 	if !isObject(v) {
-		c.add(path, "must be an object")
+		c.wrongType(path, v, "must be an object")
 		return
 	}
-	id, _ := get(v, "id")
-	c.text(path+".id", id)
-	spec, _ := get(v, "spec")
-	c.spec(path+".spec", spec)
-	if expired, present := get(v, "expired"); present {
+	c.text(path+".id", field(v, "id"))
+	c.spec(path+".spec", field(v, "spec"))
+	if expired := field(v, "expired"); !isUndefined(expired) {
 		c.boolean(path+".expired", expired)
 	}
-	if callID, present := get(v, "callId"); present {
+	if callID := field(v, "callId"); !isUndefined(callID) {
 		c.text(path+".callId", callID)
 	}
-	if action, present := get(v, "action"); present {
+	if action := field(v, "action"); !isUndefined(action) {
 		c.action(path+".action", action)
 	}
 }
@@ -106,34 +98,31 @@ func (c *checker) card(path string, v any) {
 func (c *checker) parts(path string, v any) {
 	list, ok := v.([]any)
 	if !ok {
-		c.add(path, "must be an array")
+		c.wrongType(path, v, "must be an array")
 		return
 	}
 	for i, part := range list {
 		p := fmt.Sprintf("%s[%d]", path, i)
 		if !isObject(part) {
-			c.add(p, "must be an object")
+			c.wrongType(p, part, "must be an object")
 			continue
 		}
-		partType, _ := get(part, "type")
-		c.text(p+".type", partType)
+		c.text(p+".type", field(part, "type"))
 	}
 }
 
 func (c *checker) handle(path string, v any) {
 	if !isObject(v) {
-		c.add(path, "must be an object")
+		c.wrongType(path, v, "must be an object")
 		return
 	}
-	provider, _ := get(v, "provider")
-	c.text(path+".provider", provider)
-	id, _ := get(v, "id")
-	c.text(path+".id", id)
+	c.text(path+".provider", field(v, "provider"))
+	c.text(path+".id", field(v, "id"))
 }
 
 // optional runs check on a field only when the event has it.
 func (c *checker) optional(e any, key string, check func(path string, v any)) {
-	if v, present := get(e, key); present {
+	if v := field(e, key); !isUndefined(v) {
 		check(key, v)
 	}
 }
@@ -143,24 +132,26 @@ func (c *checker) optional(e any, key string, check func(path string, v any)) {
 // It is for whoever produces events. A follower should not refuse a stream over an event type it
 // does not know (see IsRunEventType); later versions add types.
 func ValidateRunEvent(e any) []RunEventIssue {
+	c := newChecker()
 	if !isObject(e) {
-		return []RunEventIssue{{Path: "", Message: "event must be an object"}}
+		c.wrongType("", e, "event must be an object")
+		return c.issues
 	}
-	typeValue, _ := get(e, "type")
+	typeValue := field(e, "type")
 	eventType, ok := asString(typeValue)
 	if !ok {
-		return []RunEventIssue{{Path: "type", Message: "must be a string"}}
+		c.wrongType("type", typeValue, "must be a string")
+		return c.issues
 	}
-	c := &checker{issues: []RunEventIssue{}}
-	field := func(key string) any { v, _ := get(e, key); return v }
+	ev := func(key string) any { return field(e, key) }
 	switch eventType {
 	case "run-start":
-		c.text("runId", field("runId"))
-		c.oneOf("mode", field("mode"), RunModes)
+		c.text("runId", ev("runId"))
+		c.oneOf("mode", ev("mode"), RunModes)
 	case "run-snapshot":
-		c.parts("parts", field("parts"))
-		if cards, ok := field("cards").([]any); !ok {
-			c.add("cards", "must be an array")
+		c.parts("parts", ev("parts"))
+		if cards, ok := ev("cards").([]any); !ok {
+			c.wrongType("cards", ev("cards"), "must be an array")
 		} else {
 			for i, card := range cards {
 				c.card(fmt.Sprintf("cards[%d]", i), card)
@@ -169,71 +160,73 @@ func ValidateRunEvent(e any) []RunEventIssue {
 		c.optional(e, "usage", c.usage)
 		c.optional(e, "steps", c.count)
 	case "context-built":
-		c.object("trace", field("trace"))
-		c.str("system", field("system"))
-		if names, ok := field("toolNames").([]any); !ok {
-			c.add("toolNames", "must be an array")
+		c.object("trace", ev("trace"))
+		c.str("system", ev("system"))
+		if names, ok := ev("toolNames").([]any); !ok {
+			c.wrongType("toolNames", ev("toolNames"), "must be an array")
 		} else {
 			for i, name := range names {
 				c.str(fmt.Sprintf("toolNames[%d]", i), name)
 			}
 		}
 	case "step-start":
-		c.count("step", field("step"))
+		c.count("step", ev("step"))
 	case "text-delta", "reasoning-delta":
-		c.str("delta", field("delta"))
+		c.str("delta", ev("delta"))
 	case "tool-call-input-delta":
-		c.text("callId", field("callId"))
-		c.text("name", field("name"))
+		c.text("callId", ev("callId"))
+		c.text("name", ev("name"))
 		c.optional(e, "partialCard", c.spec)
 		c.optional(e, "loading", c.object)
 	case "tool-call":
-		c.text("callId", field("callId"))
-		c.text("name", field("name"))
+		c.text("callId", ev("callId"))
+		c.text("name", ev("name"))
 		c.optional(e, "repaired", c.boolean)
 		c.optional(e, "loading", c.object)
 	case "awaiting-user":
-		c.text("callId", field("callId"))
-		c.card("card", field("card"))
+		c.text("callId", ev("callId"))
+		c.card("card", ev("card"))
 	case "user-responded":
-		c.text("callId", field("callId"))
-		c.action("action", field("action"))
+		c.text("callId", ev("callId"))
+		c.action("action", ev("action"))
 	case "tool-result":
-		c.text("callId", field("callId"))
-		c.text("name", field("name"))
+		c.text("callId", ev("callId"))
+		c.text("name", ev("name"))
 		c.optional(e, "failure", c.str)
-		if !isAmount(field("ms")) {
-			c.add("ms", "must be a non-negative number")
-		}
+		c.amount("ms", ev("ms"))
 	case "card":
-		c.card("card", field("card"))
+		c.card("card", ev("card"))
 	case "card-updated":
-		c.text("cardId", field("cardId"))
-		c.spec("spec", field("spec"))
+		c.text("cardId", ev("cardId"))
+		c.spec("spec", ev("spec"))
 	case "step-finish":
-		c.count("step", field("step"))
-		c.oneOf("finishReason", field("finishReason"), RunFinishReasons)
+		c.count("step", ev("step"))
+		c.oneOf("finishReason", ev("finishReason"), RunFinishReasons)
 		c.optional(e, "usage", c.usage)
 	case "job-started":
-		c.handle("handle", field("handle"))
+		c.handle("handle", ev("handle"))
 	case "job-status":
-		c.handle("handle", field("handle"))
-		c.oneOf("status", field("status"), RunJobStatuses)
+		c.handle("handle", ev("handle"))
+		c.oneOf("status", ev("status"), RunJobStatuses)
 	case "message":
-		c.parts("parts", field("parts"))
+		c.parts("parts", ev("parts"))
 	case "metering":
-		c.object("record", field("record"))
+		c.object("record", ev("record"))
 	case "usage":
-		c.usage("usage", field("usage"))
+		c.usage("usage", ev("usage"))
 	case "run-finish":
-		c.text("runId", field("runId"))
-		c.oneOf("finishReason", field("finishReason"), RunFinishReasons)
-		c.usage("usage", field("usage"))
-		c.count("steps", field("steps"))
+		c.text("runId", ev("runId"))
+		c.oneOf("finishReason", ev("finishReason"), RunFinishReasons)
+		c.usage("usage", ev("usage"))
+		c.count("steps", ev("steps"))
 	case "error":
-		c.boolean("recoverable", field("recoverable"))
+		c.boolean("recoverable", ev("recoverable"))
 	default:
-		c.add("type", "unknown run event type")
+		if hint := DidYouMean(eventType, RunEventTypes); hint != "" {
+			c.addHint("type", CodeEnum, "unknown run event type", hint)
+		} else {
+			c.add("type", CodeEnum, "unknown run event type")
+		}
 	}
 	return c.issues
 }

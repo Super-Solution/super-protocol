@@ -13,6 +13,14 @@ import (
 )
 
 type fixtures struct {
+	IssueCodes struct {
+		Codes []string `json:"codes"`
+	} `json:"issue_codes"`
+	DidYouMean []struct {
+		Value   any      `json:"value"`
+		Allowed []string `json:"allowed"`
+		Expect  *string  `json:"expect"`
+	} `json:"did_you_mean"`
 	PluginManifest []struct {
 		Value  any             `json:"value"`
 		Expect []ManifestIssue `json:"expect"`
@@ -133,6 +141,28 @@ func load(t testing.TB) fixtures {
 	return f
 }
 
+func TestIssueCodes(t *testing.T) {
+	if want := load(t).IssueCodes.Codes; !reflect.DeepEqual(IssueCodes, want) {
+		t.Errorf("IssueCodes = %v, want %v", IssueCodes, want)
+	}
+}
+
+func TestDidYouMean(t *testing.T) {
+	f := load(t)
+	if len(f.DidYouMean) < 25 {
+		t.Fatalf("only %d cases", len(f.DidYouMean))
+	}
+	for i, c := range f.DidYouMean {
+		got, want := DidYouMean(c.Value, c.Allowed), ""
+		if c.Expect != nil {
+			want = *c.Expect
+		}
+		if got != want {
+			t.Errorf("did_you_mean[%d] %v in %v: %q, want %q", i, c.Value, c.Allowed, got, want)
+		}
+	}
+}
+
 func TestPluginManifest(t *testing.T) {
 	f := load(t)
 	if len(f.PluginManifest) < 100 {
@@ -151,7 +181,7 @@ func TestEditorCard(t *testing.T) {
 		t.Fatalf("only %d cases", len(f.EditorCard))
 	}
 	for i, c := range f.EditorCard {
-		if got := ValidateEditorCardSpec(c.Value); got != c.Expect {
+		if got := ValidateEditorCardSpec(c.Value); !reflect.DeepEqual(got, c.Expect) {
 			t.Errorf("editor[%d]: %v, want %v", i, got, c.Expect)
 		}
 	}
@@ -163,7 +193,7 @@ func TestChartCard(t *testing.T) {
 		t.Fatalf("only %d cases", len(f.ChartCard))
 	}
 	for i, c := range f.ChartCard {
-		if got := ValidateChartCardSpec(c.Value); got != c.Expect {
+		if got := ValidateChartCardSpec(c.Value); !reflect.DeepEqual(got, c.Expect) {
 			t.Errorf("chart[%d]: %v, want %v", i, got, c.Expect)
 		}
 	}
@@ -175,7 +205,7 @@ func TestPlotCard(t *testing.T) {
 		t.Fatalf("only %d cases", len(f.PlotCard))
 	}
 	for i, c := range f.PlotCard {
-		if got := ValidatePlotCardSpec(c.Value); got != c.Expect {
+		if got := ValidatePlotCardSpec(c.Value); !reflect.DeepEqual(got, c.Expect) {
 			t.Errorf("plot[%d]: %v, want %v", i, got, c.Expect)
 		}
 	}

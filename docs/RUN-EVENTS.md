@@ -83,14 +83,15 @@ beyond `kind` or a content part beyond `type`. They belong to the tool, the card
 
 ## Checking what you send
 
-`validateRunEvent(event)` returns a list of `{ path, message }`; an empty list means the event is valid. It is for
-the side that produces events: run it in the tests of a server that streams them.
+`validateRunEvent(event)` returns a list of issues, each `{ path, code, message, hint? }` (see [`ISSUES.md`](ISSUES.md));
+an empty list means the event is valid. It is for the side that produces events: run it in the tests of a server that
+streams them.
 
 ```ts
 import { validateRunEvent, runStreamOutcome } from "@supersolutions/super-protocol/run";
 
 validateRunEvent({ type: "run-finish", runId: "run_1", finishReason: "done", usage: {}, steps: 1 });
-// [{ path: "finishReason", message: "must be one of stop, length, tool-calls, content-filter, cancelled, error, unknown" }]
+// [{ path: "finishReason", code: "enum", message: "must be one of stop, length, tool-calls, content-filter, cancelled, error, unknown" }]
 ```
 
 ```go

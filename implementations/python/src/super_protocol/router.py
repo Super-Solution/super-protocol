@@ -15,7 +15,7 @@ from typing import Any, Literal
 from . import _js as js
 from ._check import Checker
 from ._js import UNDEFINED, get
-from .validators import ManifestIssue
+from .issue import Issue, did_you_mean, json_type
 
 INFERENCE_ROLES = ("system", "user", "assistant", "tool")
 INFERENCE_FINISH_REASONS = ("stop", "length", "tool_calls")
@@ -32,6 +32,7 @@ STREAM_EVENT_TYPES = (
 InferenceStreamOutcome = Literal["empty", "completed", "failed", "replayed", "interrupted"]
 
 _IMAGE_DETAILS = ("auto", "low", "high")
+_TOOL_CHOICES = ("auto", "none", "required")
 _TOOL_NAME = re.compile(r"[A-Za-z0-9_-]{1,64}")
 _DATA_IMAGE = re.compile(r"data:image/(png|jpeg|gif|webp);base64,[A-Za-z0-9+/]+={0,2}")
 _USAGE_METERS = ("input", "cached", "cache_write", "output")
@@ -40,20 +41,26 @@ _USAGE_EXTRAS = ("images", "video_ms", "audio_ms", "tasks")
 
 class _Check(Checker):
     def tool_name(self, path: str, value: Any) -> None:
-        if not js.is_string(value) or _TOOL_NAME.fullmatch(value) is None:
-            self.add(path, "must be 1 to 64 letters, digits, _ or -")
+        message = "must be 1 to 64 letters, digits, _ or -"
+        if not js.is_string(value):
+            self.wrong_type(path, value, message)
+        elif _TOOL_NAME.fullmatch(value) is None:
+            self.add(path, "format", message)
 
     def positive(self, path: str, value: Any) -> None:
-        if not (js.is_integer(value) and value >= 1):
-            self.add(path, "must be a positive integer")
+        message = "must be a positive integer"
+        if not js.is_number(value):
+            self.wrong_type(path, value, message)
+        elif not (js.is_integer(value) and value >= 1):
+            self.add(path, "range", message)
 
     def content_parts(self, path: str, parts: list[Any]) -> None:
         if not parts:
-            return self.add(path, "must not be empty")
+            return self.add(path, "empty", "must not be empty")
         for i, part in enumerate(parts):
             p = f"{path}[{i}]"
             if not js.is_object(part):
-                self.add(p, "must be an object")
+                self.wrong_type(p, part, "must be an object")
                 continue
             kind = get(part, "type")
             self.one_of(f"{p}.type", kind, ("text", "image"))
@@ -61,21 +68,24 @@ class _Check(Checker):
                 self.string(f"{p}.text", get(part, "text"))
             if kind == "image":
                 url = get(part, "url")
-                if not js.is_string(url) or not (js.is_http_url(url, True) or _DATA_IMAGE.fullmatch(url)):
-                    self.add(f"{p}.url", "must be an https URL or a data:image URL (png, jpeg, gif or webp, base64)")
+                message = "must be an https URL or a data:image URL (png, jpeg, gif or webp, base64)"
+                if not js.is_string(url):
+                    self.wrong_type(f"{p}.url", url, message)
+                elif not (js.is_http_url(url, True) or _DATA_IMAGE.fullmatch(url)):
+                    self.add(f"{p}.url", "format", message)
                 if get(part, "detail") is not UNDEFINED:
                     self.one_of(f"{p}.detail", get(part, "detail"), _IMAGE_DETAILS)
 
     def tool_calls(self, path: str, value: Any, made: set[str]) -> None:
         if not isinstance(value, list):
-            return self.add(path, "must be an array")
+            return self.wrong_type(path, value, "must be an array")
         if not value:
-            return self.add(path, "must not be empty")
+            return self.add(path, "empty", "must not be empty")
         own: set[str] = set()
         for i, call in enumerate(value):
             p = f"{path}[{i}]"
             if not js.is_object(call):
-                self.add(p, "must be an object")
+                self.wrong_type(p, call, "must be an object")
                 continue
             self.text(f"{p}.id", get(call, "id"))
             self.tool_name(f"{p}.name", get(call, "name"))
@@ -83,7 +93,7 @@ class _Check(Checker):
             call_id = get(call, "id")
             if js.is_string(call_id) and call_id != "":
                 if call_id in own:
-                    self.add(f"{p}.id", "duplicate tool call id")
+                    self.add(f"{p}.id", "unique", "duplicate tool call id")
                 own.add(call_id)
         made |= own
 
@@ -91,7 +101,7 @@ class _Check(Checker):
         """`made` is the tool call ids earlier assistant messages made, or None to skip the check that a tool result
         answers one of them."""
         if not js.is_object(value):
-            return self.add(path, "must be an object")
+            return self.wrong_type(path, value, "must be an object")
 
         def at(key: str) -> str:
             return key if path == "" else f"{path}.{key}"
@@ -106,7 +116,7 @@ class _Check(Checker):
             if isinstance(content, list):
                 self.content_parts(at("content"), content)
             elif not js.is_string(content):
-                self.add(at("content"), "must be a string or an array of content parts")
+                self.wrong_type(at("content"), content, "must be a string or an array of content parts")
         elif role == "assistant":
             if get(value, "tool_calls") is not UNDEFINED:
                 self.tool_calls(at("tool_calls"), get(value, "tool_calls"), made if made is not None else set())
@@ -121,17 +131,17 @@ class _Check(Checker):
             if get(value, "is_error") is not UNDEFINED:
                 self.boolean(at("is_error"), get(value, "is_error"))
             if made is not None and js.is_string(call_id) and call_id != "" and call_id not in made:
-                self.add(at("tool_call_id"), "no earlier assistant message made this tool call")
+                self.add(at("tool_call_id"), "reference", "no earlier assistant message made this tool call")
 
     def usage(self, path: str, value: Any) -> None:
         if not js.is_object(value):
-            return self.add(path, "must be an object")
+            return self.wrong_type(path, value, "must be an object")
         self.text(f"{path}.status", get(value, "status"))
         meters = get(value, "meters")
         if meters is UNDEFINED:
             return
         if not js.is_object(meters):
-            return self.add(f"{path}.meters", "must be an object")
+            return self.wrong_type(f"{path}.meters", meters, "must be an object")
         for k in _USAGE_METERS:
             self.count(f"{path}.meters.{k}", get(meters, k))
         for k in _USAGE_EXTRAS:
@@ -139,7 +149,7 @@ class _Check(Checker):
                 self.count(f"{path}.meters.{k}", get(meters, k))
 
 
-def validate_inference_message(value: Any) -> list[ManifestIssue]:
+def validate_inference_message(value: Any) -> list[Issue]:
     """Checks one message on its own: its role, its content and, for an assistant, its tool calls. Whether a tool
     result answers a call an earlier message made needs the whole conversation; `validate_inference_request` does."""
     c = _Check()
@@ -147,18 +157,21 @@ def validate_inference_message(value: Any) -> list[ManifestIssue]:
     return c.issues
 
 
-def validate_inference_request(value: Any) -> list[ManifestIssue]:
+def validate_inference_request(value: Any) -> list[Issue]:
     """Checks a request before it is sent: whether it is well formed, not whether a given gateway can serve it."""
-    if not js.is_object(value):
-        return [{"path": "", "message": "request must be an object"}]
     c = _Check()
+    if not js.is_object(value):
+        c.wrong_type("", value, "request must be an object")
+        return c.issues
     c.text("service", get(value, "service"))
     if get(value, "service_version") is not UNDEFINED:
         c.count("service_version", get(value, "service_version"))
     c.text("customer_id", get(value, "customer_id"))
     messages = get(value, "messages")
-    if not isinstance(messages, list) or not messages:
-        c.add("messages", "must be a non-empty array")
+    if not isinstance(messages, list):
+        c.wrong_type("messages", messages, "must be a non-empty array")
+    elif not messages:
+        c.add("messages", "empty", "must be a non-empty array")
     else:
         made: set[str] = set()
         for i, m in enumerate(messages):
@@ -166,31 +179,38 @@ def validate_inference_request(value: Any) -> list[ManifestIssue]:
     tools = get(value, "tools")
     if tools is not UNDEFINED:
         if not isinstance(tools, list):
-            c.add("tools", "must be an array")
+            c.wrong_type("tools", tools, "must be an array")
         else:
             names: set[str] = set()
             for i, tool in enumerate(tools):
                 p = f"tools[{i}]"
                 if not js.is_object(tool):
-                    c.add(p, "must be an object")
+                    c.wrong_type(p, tool, "must be an object")
                     continue
                 name = get(tool, "name")
                 c.tool_name(f"{p}.name", name)
                 if get(tool, "description") is not UNDEFINED:
                     c.string(f"{p}.description", get(tool, "description"))
                 schema = get(tool, "input_schema")
-                if not js.is_object(schema) or get(schema, "type") != "object":
-                    c.add(f"{p}.input_schema", 'must be a JSON Schema object with type "object"')
+                schema_message = 'must be a JSON Schema object with type "object"'
+                if not js.is_object(schema):
+                    c.wrong_type(f"{p}.input_schema", schema, schema_message)
+                elif get(schema, "type") != "object":
+                    c.add(f"{p}.input_schema", "shape", schema_message)
                 if js.is_string(name) and _TOOL_NAME.fullmatch(name):
                     if name in names:
-                        c.add(f"{p}.name", "duplicate tool name")
+                        c.add(f"{p}.name", "unique", "duplicate tool name")
                     names.add(name)
     choice = get(value, "tool_choice")
     if choice is not UNDEFINED:
         if js.is_object(choice):
             c.tool_name("tool_choice.name", get(choice, "name"))
-        elif not js.is_string(choice) or choice not in ("auto", "none", "required"):
-            c.add("tool_choice", 'must be "auto", "none", "required" or { name }')
+        elif not js.is_string(choice) or choice not in _TOOL_CHOICES:
+            message = 'must be "auto", "none", "required" or { name }'
+            if js.is_string(choice):
+                c.add("tool_choice", "enum", message, did_you_mean(choice, _TOOL_CHOICES))
+            else:
+                c.add("tool_choice", "type", message, f"got {json_type(choice)}")
     if get(value, "max_output_tokens") is not UNDEFINED:
         c.positive("max_output_tokens", get(value, "max_output_tokens"))
     if get(value, "timeout_ms") is not UNDEFINED:
@@ -198,17 +218,20 @@ def validate_inference_request(value: Any) -> list[ManifestIssue]:
     return c.issues
 
 
-def validate_stream_event(value: Any) -> list[ManifestIssue]:
+def validate_stream_event(value: Any) -> list[Issue]:
     """Checks one stream event of the gateway. For whoever produces events; a consumer skips a type it does not know
     (`inference_stream_outcome` does), since later versions add types."""
+    c = _Check()
     if not js.is_object(value):
-        return [{"path": "", "message": "event must be an object"}]
+        c.wrong_type("", value, "event must be an object")
+        return c.issues
     kind = get(value, "type")
     if not js.is_string(kind):
-        return [{"path": "type", "message": "must be a string"}]
+        c.wrong_type("type", kind, "must be a string")
+        return c.issues
     if kind not in STREAM_EVENT_TYPES:
-        return [{"path": "type", "message": "unknown stream event type"}]
-    c = _Check()
+        c.add("type", "enum", "unknown stream event type", did_you_mean(kind, STREAM_EVENT_TYPES))
+        return c.issues
 
     def field(key: str) -> Any:
         return get(value, key)

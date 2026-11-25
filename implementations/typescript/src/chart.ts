@@ -8,7 +8,9 @@
  * structurally identical to the types of `@supersolutions/super-chart-core`, so
  * a datafeed written against either is accepted by the other.
  */
-import type { CardKindDefinition, CardValidationResult } from "./chat.js";
+import { cardResult, type CardKindDefinition, type CardValidationResult } from "./chat.js";
+import { filled, finite, finiteBetween, isObject, oneOf, short, str, wrongType, type Fields } from "./check.js";
+import { collector, jsonType, type Add } from "./issue.js";
 
 export const CHART_CARD_KIND = "super-chart.chart";
 
@@ -138,120 +140,211 @@ export interface ChartCardSpec {
 
 export const CHART_LIMITS = Object.freeze({ bars: 20000, annotations: 256, indicators: 12, anchors: 3, textLength: 2048, keyLength: 128, params: 16, paramKeyLength: 32, paramStringLength: 128, height: [160, 1200] as const });
 
-const fail = (error: string, expected?: string): CardValidationResult => (expected ? { ok: false, error, expected } : { ok: false, error });
-const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
-const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+const ANNOTATION_TONES = ["bull", "bear", "neutral", "accent"] as const;
+const PARAM_KEY = /^[A-Za-z][A-Za-z0-9_-]{0,31}$/;
 
-export function validatePeriod(v: unknown): string | null {
-  if (!isObject(v)) return "period must be an object.";
-  if (!Number.isSafeInteger(v.multiplier) || (v.multiplier as number) <= 0) return "period.multiplier must be a positive integer.";
-  if (typeof v.timespan !== "string" || v.timespan.trim() === "") return "period.timespan must be a non-empty string.";
-  if (typeof v.text !== "string" || v.text.trim() === "") return "period.text must be a non-empty string.";
-  return null;
+/** The first message of what `fill` finds, or null: the shape of the exported helpers below. */
+function firstMessage(fill: (add: Add) => void): string | null {
+  const { issues, add } = collector();
+  fill(add);
+  return issues[0]?.message ?? null;
 }
 
-export function validateSymbol(v: unknown): string | null {
-  if (!isObject(v)) return "symbol must be an object.";
-  if (typeof v.ticker !== "string" || v.ticker.trim() === "") return "symbol.ticker must be a non-empty string.";
+function period(add: Add, path: string, v: unknown): void {
+  if (!isObject(v)) return wrongType(add, path, v, "period must be an object.");
+  const multiplier = "period.multiplier must be a positive integer.";
+  if (typeof v.multiplier !== "number") wrongType(add, `${path}.multiplier`, v.multiplier, multiplier);
+  else if (!Number.isSafeInteger(v.multiplier) || v.multiplier <= 0) add(`${path}.multiplier`, "range", multiplier);
+  filled(add, `${path}.timespan`, v.timespan, "period.timespan must be a non-empty string.");
+  filled(add, `${path}.text`, v.text, "period.text must be a non-empty string.");
+}
+
+function symbol(add: Add, path: string, v: unknown): void {
+  if (!isObject(v)) return wrongType(add, path, v, "symbol must be an object.");
+  filled(add, `${path}.ticker`, v.ticker, "symbol.ticker must be a non-empty string.");
   for (const k of ["name", "shortName", "exchange", "market", "priceCurrency", "type", "logo", "timezone"] as const) {
-    if (v[k] !== undefined && typeof v[k] !== "string") return `symbol.${k} must be a string.`;
+    if (v[k] !== undefined) str(add, `${path}.${k}`, v[k], `symbol.${k} must be a string.`);
   }
-  if (v.pricePrecision !== undefined && v.pricePrecision !== "auto" && !(Number.isInteger(v.pricePrecision) && (v.pricePrecision as number) >= 0 && (v.pricePrecision as number) <= 12)) return 'symbol.pricePrecision must be an integer from 0 to 12 or "auto".';
-  return null;
+  const precision = v.pricePrecision;
+  if (precision !== undefined && precision !== "auto") {
+    const message = 'symbol.pricePrecision must be an integer from 0 to 12 or "auto".';
+    if (typeof precision !== "number") add(`${path}.pricePrecision`, "type", message, `got ${jsonType(precision)}`);
+    else if (!(Number.isInteger(precision) && precision >= 0 && precision <= 12)) add(`${path}.pricePrecision`, "range", message);
+  }
 }
 
-export function validateMarketBar(v: unknown): string | null {
-  if (!isObject(v)) return "a bar must be an object.";
-  for (const k of ["timestamp", "open", "high", "low", "close"] as const) if (!finite(v[k])) return `bar.${k} must be a finite number.`;
-  if (v.volume !== undefined && !finite(v.volume)) return "bar.volume must be a finite number.";
-  if ((v.high as number) < Math.max(v.open as number, v.close as number, v.low as number) || (v.low as number) > Math.min(v.open as number, v.close as number)) return "bar high/low must contain open and close.";
-  return null;
+function bar(add: Add, path: string, v: unknown): void {
+  if (!isObject(v)) return wrongType(add, path, v, "a bar must be an object.");
+  for (const k of ["timestamp", "open", "high", "low", "close"] as const) finite(add, `${path}.${k}`, v[k], `bar.${k} must be a finite number.`);
+  if (v.volume !== undefined) finite(add, `${path}.volume`, v.volume, "bar.volume must be a finite number.");
+  const { open, high, low, close } = v;
+  if ([open, high, low, close].every((n) => typeof n === "number" && Number.isFinite(n))) {
+    const [o, h, l, c] = [open, high, low, close] as number[];
+    if (h! < Math.max(o!, c!, l!) || l! > Math.min(o!, c!)) add(path, "shape", "bar high/low must contain open and close.");
+  }
 }
 
-export function validateChartAnnotation(v: unknown): string | null {
-  if (!isObject(v)) return "an annotation must be an object.";
-  if (typeof v.key !== "string" || v.key.trim() === "" || v.key.length > CHART_LIMITS.keyLength) return `annotation.key must be a non-empty string of at most ${CHART_LIMITS.keyLength} characters.`;
-  if (!CHART_ANNOTATION_KINDS.includes(v.kind as ChartAnnotationKind)) return 'annotation.kind must be "level", "zone", "marker", "trend", "ray", "fibonacci" or "plan".';
-  if (!Array.isArray(v.anchors) || v.anchors.length === 0 || v.anchors.length > CHART_LIMITS.anchors) return "annotation.anchors must hold one to three anchors.";
-  for (const a of v.anchors) {
-    if (!isObject(a) || !finite(a.time)) return "annotation anchors need a finite time.";
-    if (a.price !== undefined && !finite(a.price)) return "annotation anchor price must be a finite number.";
+/** Checks one annotation; returns its key when the key is a usable one, so the caller can look for duplicates. */
+function annotation(add: Add, path: string, v: unknown): string | undefined {
+  if (!isObject(v)) return void wrongType(add, path, v, "an annotation must be an object.");
+  const keyMessage = `annotation.key must be a non-empty string of at most ${CHART_LIMITS.keyLength} characters.`;
+  filled(add, `${path}.key`, v.key, keyMessage);
+  const key = typeof v.key === "string" && v.key.trim() !== "" ? v.key : undefined;
+  if (key !== undefined && key.length > CHART_LIMITS.keyLength) add(`${path}.key`, "length", keyMessage);
+  oneOf(add, `${path}.kind`, v.kind, CHART_ANNOTATION_KINDS, 'annotation.kind must be "level", "zone", "marker", "trend", "ray", "fibonacci" or "plan".');
+  const kind = CHART_ANNOTATION_KINDS.includes(v.kind as ChartAnnotationKind) ? (v.kind as ChartAnnotationKind) : undefined;
+  const anchorsMessage = "annotation.anchors must hold one to three anchors.";
+  if (!Array.isArray(v.anchors)) wrongType(add, `${path}.anchors`, v.anchors, anchorsMessage);
+  else if (v.anchors.length === 0) add(`${path}.anchors`, "empty", anchorsMessage);
+  else if (v.anchors.length > CHART_LIMITS.anchors) add(`${path}.anchors`, "limit", anchorsMessage);
+  let anchorsOk = false;
+  if (Array.isArray(v.anchors) && v.anchors.length >= 1 && v.anchors.length <= CHART_LIMITS.anchors) {
+    anchorsOk = true;
+    v.anchors.forEach((a: unknown, j) => {
+      const ap = `${path}.anchors[${j}]`;
+      if (!isObject(a)) {
+        anchorsOk = false;
+        return wrongType(add, ap, a, "annotation anchors need a finite time.");
+      }
+      finite(add, `${ap}.time`, a.time, "annotation anchors need a finite time.");
+      if (a.price !== undefined) finite(add, `${ap}.price`, a.price, "annotation anchor price must be a finite number.");
+    });
   }
-  const anchors = v.anchors as Array<{ price?: number }>;
-  const kind = v.kind as ChartAnnotationKind;
-  const needed = CHART_ANNOTATION_ANCHORS[kind];
-  if (kind === "level" && (anchors.length !== 1 || anchors[0]?.price === undefined)) return "a level needs exactly one anchor with a price.";
-  else if (kind === "zone" && (anchors.length !== 2 || anchors.some((a) => a.price === undefined))) return "a zone needs two anchors, both with a price.";
-  else if (kind === "marker" && anchors.length !== 1) return "a marker needs exactly one anchor.";
-  else if (kind !== "level" && kind !== "zone" && kind !== "marker" && (anchors.length !== needed || anchors.some((a) => a.price === undefined))) return `a ${kind} needs ${needed} anchors, all with a price.`;
+  if (kind !== undefined && anchorsOk) {
+    const anchors = v.anchors as Array<Fields>;
+    const needed = CHART_ANNOTATION_ANCHORS[kind];
+    const priced = (a: Fields) => a.price !== undefined;
+    let problem: string | undefined;
+    if (kind === "level") {
+      if (anchors.length !== 1 || !priced(anchors[0]!)) problem = "a level needs exactly one anchor with a price.";
+    } else if (kind === "zone") {
+      if (anchors.length !== 2 || !anchors.every(priced)) problem = "a zone needs two anchors, both with a price.";
+    } else if (kind === "marker") {
+      if (anchors.length !== 1) problem = "a marker needs exactly one anchor.";
+    } else if (anchors.length !== needed || !anchors.every(priced)) problem = `a ${kind} needs ${needed} anchors, all with a price.`;
+    if (problem !== undefined) add(`${path}.anchors`, "shape", problem);
+  }
   if (v.params !== undefined) {
-    if (kind === "level" || kind === "zone" || kind === "marker") return "annotation.params applies only to trend, ray, fibonacci and plan.";
-    if (!isObject(v.params)) return "annotation.params must be an object.";
-    const entries = Object.entries(v.params);
-    if (entries.length > CHART_LIMITS.params) return `annotation.params may hold at most ${CHART_LIMITS.params} entries.`;
-    for (const [name, value] of entries) {
-      if (!/^[A-Za-z][A-Za-z0-9_-]{0,31}$/.test(name)) return "annotation.params keys must be 1 to 32 letters, digits, dash or underscore, starting with a letter.";
-      if (typeof value === "number" ? !Number.isFinite(value) : typeof value === "string" ? value.length > CHART_LIMITS.paramStringLength : typeof value !== "boolean") return `annotation.params.${name} must be a finite number, a boolean or a string of at most ${CHART_LIMITS.paramStringLength} characters.`;
+    const pp = `${path}.params`;
+    if (kind === "level" || kind === "zone" || kind === "marker") add(pp, "shape", "annotation.params applies only to trend, ray, fibonacci and plan.");
+    else if (!isObject(v.params)) wrongType(add, pp, v.params, "annotation.params must be an object.");
+    else {
+      const entries = Object.entries(v.params);
+      if (entries.length > CHART_LIMITS.params) add(pp, "limit", `annotation.params may hold at most ${CHART_LIMITS.params} entries.`);
+      for (const [name, value] of entries) {
+        if (!PARAM_KEY.test(name)) add(`${pp}.${name}`, "format", "annotation.params keys must be 1 to 32 letters, digits, dash or underscore, starting with a letter.");
+        const message = `annotation.params.${name} must be a finite number, a boolean or a string of at most ${CHART_LIMITS.paramStringLength} characters.`;
+        if (typeof value === "number") {
+          if (!Number.isFinite(value)) add(`${pp}.${name}`, "range", message);
+        } else if (typeof value === "string") {
+          if (value.length > CHART_LIMITS.paramStringLength) add(`${pp}.${name}`, "length", message);
+        } else if (typeof value !== "boolean") add(`${pp}.${name}`, "type", message, `got ${jsonType(value)}`);
+      }
     }
   }
-  if (v.text !== undefined && (typeof v.text !== "string" || v.text.length > CHART_LIMITS.textLength)) return `annotation.text must be a string of at most ${CHART_LIMITS.textLength} characters.`;
-  if (v.tone !== undefined && !["bull", "bear", "neutral", "accent"].includes(v.tone as string)) return "annotation.tone must be bull, bear, neutral or accent.";
-  if (v.color !== undefined && (typeof v.color !== "string" || v.color.length > 128)) return "annotation.color must be a short CSS color string.";
-  return null;
+  if (v.text !== undefined) short(add, `${path}.text`, v.text, CHART_LIMITS.textLength, `annotation.text must be a string of at most ${CHART_LIMITS.textLength} characters.`);
+  if (v.tone !== undefined) oneOf(add, `${path}.tone`, v.tone, ANNOTATION_TONES, "annotation.tone must be bull, bear, neutral or accent.");
+  if (v.color !== undefined) short(add, `${path}.color`, v.color, 128, "annotation.color must be a short CSS color string.");
+  return key !== undefined && key.length <= CHART_LIMITS.keyLength ? key : undefined;
 }
 
-export function validateChartAnnotations(v: unknown): string | null {
-  if (!Array.isArray(v)) return "annotations must be an array.";
-  if (v.length > CHART_LIMITS.annotations) return `at most ${CHART_LIMITS.annotations} annotations per chart.`;
+function annotations(add: Add, path: string, v: unknown): void {
+  if (!Array.isArray(v)) return wrongType(add, path, v, "annotations must be an array.");
+  if (v.length > CHART_LIMITS.annotations) add(path, "limit", `at most ${CHART_LIMITS.annotations} annotations per chart.`);
   const keys = new Set<string>();
-  for (const item of v) {
-    const problem = validateChartAnnotation(item);
-    if (problem) return problem;
-    const key = (item as ChartAnnotation).key;
-    if (keys.has(key)) return `duplicate annotation key "${key}".`;
+  v.forEach((item: unknown, i) => {
+    const key = annotation(add, `${path}[${i}]`, item);
+    if (key === undefined) return;
+    if (keys.has(key)) add(`${path}[${i}].key`, "unique", `duplicate annotation key "${key}".`);
     keys.add(key);
-  }
-  return null;
+  });
+}
+
+/** The first problem with a period, as a sentence, or null when it is valid. For every problem use `validateChartCardSpec`. */
+export function validatePeriod(v: unknown): string | null {
+  return firstMessage((add) => period(add, "period", v));
+}
+
+/** The first problem with a symbol, as a sentence, or null when it is valid. */
+export function validateSymbol(v: unknown): string | null {
+  return firstMessage((add) => symbol(add, "symbol", v));
+}
+
+/** The first problem with a bar, as a sentence, or null when it is valid. */
+export function validateMarketBar(v: unknown): string | null {
+  return firstMessage((add) => bar(add, "", v));
+}
+
+/** The first problem with an annotation, as a sentence, or null when it is valid. */
+export function validateChartAnnotation(v: unknown): string | null {
+  return firstMessage((add) => void annotation(add, "", v));
+}
+
+/** The first problem with a list of annotations, as a sentence, or null when it is valid. */
+export function validateChartAnnotations(v: unknown): string | null {
+  return firstMessage((add) => annotations(add, "", v));
 }
 
 export function validateChartCardSpec(spec: unknown): CardValidationResult {
-  if (!isObject(spec)) return fail("Chart card spec must be an object.");
-  if (spec.kind !== CHART_CARD_KIND) return fail(`kind must be "${CHART_CARD_KIND}".`);
-  if (spec.id !== undefined && (typeof spec.id !== "string" || spec.id.trim() === "" || spec.id.length > 128)) return fail("id must be a non-empty string.");
-  if (spec.title !== undefined && typeof spec.title !== "string") return fail("title must be a string.");
-  const problem = validateSymbol(spec.symbol) ?? validatePeriod(spec.period);
-  if (problem) return fail(problem);
-  if (spec.height !== undefined && !(finite(spec.height) && spec.height >= CHART_LIMITS.height[0] && spec.height <= CHART_LIMITS.height[1])) return fail(`height must be ${CHART_LIMITS.height[0]}..${CHART_LIMITS.height[1]} pixels.`);
-  if (spec.chartType !== undefined && !CHART_TYPES.includes(spec.chartType as ChartType)) return fail(`chartType must be one of ${CHART_TYPES.join(", ")}.`);
+  const { issues, add } = collector();
+  if (!isObject(spec)) {
+    wrongType(add, "", spec, "Chart card spec must be an object.");
+    return cardResult(issues);
+  }
+  oneOf(add, "kind", spec.kind, [CHART_CARD_KIND], `kind must be "${CHART_CARD_KIND}".`);
+  if (spec.id !== undefined) {
+    const message = "id must be a non-empty string.";
+    filled(add, "id", spec.id, message);
+    if (typeof spec.id === "string" && spec.id.trim() !== "" && spec.id.length > 128) add("id", "length", message);
+  }
+  if (spec.title !== undefined) str(add, "title", spec.title, "title must be a string.");
+  symbol(add, "symbol", spec.symbol);
+  period(add, "period", spec.period);
+  if (spec.height !== undefined) finiteBetween(add, "height", spec.height, CHART_LIMITS.height, `height must be ${CHART_LIMITS.height[0]}..${CHART_LIMITS.height[1]} pixels.`);
+  if (spec.chartType !== undefined) oneOf(add, "chartType", spec.chartType, CHART_TYPES, `chartType must be one of ${CHART_TYPES.join(", ")}.`);
   const hasBars = spec.bars !== undefined;
   const hasFeed = spec.feed !== undefined;
-  if (hasBars === hasFeed) return fail("Provide exactly one of `bars` or `feed`.", "bars: [{timestamp, open, high, low, close, volume?}] | feed: { id }");
+  if (hasBars === hasFeed) add("", "exclusive", "Provide exactly one of `bars` or `feed`.", "bars: [{timestamp, open, high, low, close, volume?}] | feed: { id }");
   if (hasBars) {
-    if (!Array.isArray(spec.bars) || spec.bars.length === 0) return fail("bars must be a non-empty array.");
-    if (spec.bars.length > CHART_LIMITS.bars) return fail(`at most ${CHART_LIMITS.bars} inline bars; reference a feed for more.`);
-    let previous = -Infinity;
-    for (const bar of spec.bars) {
-      const bad = validateMarketBar(bar);
-      if (bad) return fail(bad);
-      const t = (bar as MarketBar).timestamp;
-      if (t <= previous) return fail("bars must be sorted oldest first with unique timestamps.");
-      previous = t;
+    const bars = spec.bars;
+    if (!Array.isArray(bars)) wrongType(add, "bars", bars, "bars must be a non-empty array.");
+    else if (bars.length === 0) add("bars", "empty", "bars must be a non-empty array.");
+    else {
+      if (bars.length > CHART_LIMITS.bars) add("bars", "limit", `at most ${CHART_LIMITS.bars} inline bars; reference a feed for more.`);
+      let previous = -Infinity;
+      bars.forEach((b: unknown, i) => {
+        bar(add, `bars[${i}]`, b);
+        const t = isObject(b) ? b.timestamp : undefined;
+        if (typeof t !== "number" || !Number.isFinite(t)) return;
+        if (t <= previous) add(`bars[${i}].timestamp`, "order", "bars must be sorted oldest first with unique timestamps.");
+        previous = t;
+      });
     }
-  } else if (!isObject(spec.feed) || typeof spec.feed.id !== "string" || spec.feed.id.trim() === "") {
-    return fail("feed needs a non-empty id.");
+  }
+  if (hasFeed) {
+    const message = "feed needs a non-empty id.";
+    if (!isObject(spec.feed)) wrongType(add, "feed", spec.feed, message);
+    else filled(add, "feed.id", spec.feed.id, message);
   }
   if (spec.indicators !== undefined) {
-    if (!Array.isArray(spec.indicators) || spec.indicators.length > CHART_LIMITS.indicators) return fail(`indicators must be an array of at most ${CHART_LIMITS.indicators}.`);
-    for (const i of spec.indicators) {
-      if (!isObject(i) || typeof i.name !== "string" || i.name.trim() === "") return fail("each indicator needs a name.");
-      if (i.params !== undefined && (!Array.isArray(i.params) || !i.params.every(finite))) return fail("indicator params must be an array of finite numbers.");
+    const message = `indicators must be an array of at most ${CHART_LIMITS.indicators}.`;
+    if (!Array.isArray(spec.indicators)) wrongType(add, "indicators", spec.indicators, message);
+    else {
+      if (spec.indicators.length > CHART_LIMITS.indicators) add("indicators", "limit", message);
+      spec.indicators.forEach((i: unknown, k) => {
+        const p = `indicators[${k}]`;
+        if (!isObject(i)) return wrongType(add, p, i, "each indicator needs a name.");
+        filled(add, `${p}.name`, i.name, "each indicator needs a name.");
+        if (i.params !== undefined) {
+          const params = "indicator params must be an array of finite numbers.";
+          if (!Array.isArray(i.params)) wrongType(add, `${p}.params`, i.params, params);
+          else i.params.forEach((n: unknown, j) => finite(add, `${p}.params[${j}]`, n, params));
+        }
+      });
     }
   }
-  if (spec.annotations !== undefined) {
-    const bad = validateChartAnnotations(spec.annotations);
-    if (bad) return fail(bad);
-  }
-  return { ok: true };
+  if (spec.annotations !== undefined) annotations(add, "annotations", spec.annotations);
+  return cardResult(issues);
 }
 
 export const chartCardKind: CardKindDefinition = {
