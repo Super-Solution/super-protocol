@@ -8,10 +8,25 @@
 //!
 //! Status: not published. `publish = false` until the owner decides (see the go/no-go note in the repository).
 
+mod driver;
+#[cfg(feature = "http")]
+mod http;
 mod machine;
+mod openai_chat;
 mod repair;
 
+pub use driver::{
+    compact_error, explain_missing_input, locale_compare, Driver, Model, ModelFailure,
+    ModelRequest, ModelResult, Person, RunOutput, RunSpec, ToolCtx, ToolDef, ToolError, ToolReturn,
+    ToolSpec, Tools,
+};
+#[cfg(feature = "http")]
+pub use http::HttpTransport;
 pub use machine::{
     is_user_decline, IllegalInput, LoopMachine, Step, CHECKPOINT_VERSION, USER_DECLINED,
+};
+pub use openai_chat::{
+    build_request, error_from_response, kind_from_status, to_chat_messages, ChatAccumulator,
+    HttpResponse, OpenAiChat, SseDecoder, SseMessage, Transport, TransportError,
 };
 pub use repair::{normalize_tool_name, repair_tool_arguments, RepairResult};

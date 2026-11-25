@@ -8,7 +8,7 @@ conformance/                 language-neutral test data (protocol.v1.json), gene
 implementations/typescript/  @supersolutions/super-protocol, the reference (types + validators + SSE parser)
 implementations/go/          Go port (standard library only)
 implementations/python/      Python port, package `super-protocol` (standard library only)
-implementations/rust-agent-loop/  Rust crate `super-agent-loop`: the agent loop as a state machine, plus tool-argument repair (not published)
+implementations/rust-agent-loop/  Rust crate `super-agent-loop`: the agent loop as a state machine, tool-argument repair, a driver, an OpenAI Chat Completions provider and an HTTP transport (not published)
 scripts/                   conformance generators and the local gate
 ```
 
@@ -28,7 +28,8 @@ licenses**. This repository is that neutral ground:
 - **Agent loop** (draft, not published): what one agent turn *decides* (steps, tool dispatch, approvals, stop conditions,
   repeated-call guard, checkpoint and resume), as a state machine with no I/O, and what to do with malformed tool
   arguments. Pinned by `conformance/agent-loop.v0.json` and `conformance/tool-repair.v0.json`, which a TypeScript machine,
-  a Rust crate and Super Chat's real `runAgent` are all tested against (see [`docs/AGENT-LOOP.md`](docs/AGENT-LOOP.md)).
+  a Rust crate and Super Chat's real `runAgent` are all tested against, plus a shadow replay of whole runs from wire bytes
+  (`conformance/agent-loop-replay.v0.json`, expected values produced by `runAgent`; see [`docs/AGENT-LOOP.md`](docs/AGENT-LOOP.md)).
 - **Card references**: the `ref:` link that lets text in a message point into a card, and the `ref()` method a card
   answers it with (see [`docs/CARD-REFS.md`](docs/CARD-REFS.md)).
 - **Card placement**: the same card shown inline in a conversation, in a host's side panel or inside a

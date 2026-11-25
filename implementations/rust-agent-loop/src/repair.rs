@@ -238,7 +238,7 @@ fn parse(text: &str) -> Option<Value> {
 }
 
 /// The first `n` UTF-16 code units of `s`, never cutting a surrogate pair in two.
-fn take_utf16(s: &str, n: usize) -> String {
+pub(crate) fn take_utf16(s: &str, n: usize) -> String {
     let mut units = 0;
     let mut out = String::new();
     for ch in s.chars() {
