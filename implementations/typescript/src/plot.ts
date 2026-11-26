@@ -19,7 +19,9 @@
  *   to the model so it can send a corrected card. The same split applies to
  *   `validatePlotCardSpec` errors: they are written for the model and the log.
  */
-import type { CardKindDefinition, CardValidationResult } from "./chat.js";
+import { cardResult, type CardKindDefinition, type CardValidationResult } from "./chat.js";
+import { filled, finiteBetween, isObject, oneOf, str, wrongType } from "./check.js";
+import { collector } from "./issue.js";
 
 export const PLOT_CARD_KIND = "super.plot";
 
@@ -55,21 +57,31 @@ export const PLOT_LIMITS = Object.freeze({ alt: 2048, idLength: 128, height: [16
 
 const PLOT_EXPECTED = 'spec: { type: "bar", data: [{ region: "EU", revenue: 12 }, { region: "US", revenue: 20 }], x: "region", y: "revenue" } (the plot itself, its data inside it), alt: "one sentence saying what the plot shows" (beside spec, not inside it)';
 
-const fail = (error: string, expected?: string): CardValidationResult => (expected ? { ok: false, error, expected } : { ok: false, error });
-const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
-const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
-
 /** Checks the envelope. The errors are for the model and the developer log, not for the user. */
 export function validatePlotCardSpec(spec: unknown): CardValidationResult {
-  if (!isObject(spec)) return fail("Plot card spec must be an object.");
-  if (spec.kind !== PLOT_CARD_KIND) return fail(`kind must be "${PLOT_CARD_KIND}".`);
-  if (spec.id !== undefined && (typeof spec.id !== "string" || spec.id.trim() === "" || spec.id.length > PLOT_LIMITS.idLength)) return fail("id must be a non-empty string.");
-  if (spec.title !== undefined && typeof spec.title !== "string") return fail("title must be a string.");
-  if (spec.height !== undefined && !(finite(spec.height) && spec.height >= PLOT_LIMITS.height[0] && spec.height <= PLOT_LIMITS.height[1])) return fail(`height must be ${PLOT_LIMITS.height[0]}..${PLOT_LIMITS.height[1]} pixels.`);
-  if (!isObject(spec.spec)) return fail("spec must be an object: the plot spec.", spec.spec === undefined ? PLOT_EXPECTED : undefined);
-  if (typeof spec.alt !== "string" || spec.alt.trim() === "") return fail("alt must be a non-empty string saying what the plot shows.", spec.alt === undefined ? PLOT_EXPECTED : undefined);
-  if (spec.alt.length > PLOT_LIMITS.alt) return fail(`alt must be at most ${PLOT_LIMITS.alt} characters.`);
-  return { ok: true };
+  const { issues, add } = collector();
+  if (!isObject(spec)) {
+    wrongType(add, "", spec, "Plot card spec must be an object.");
+    return cardResult(issues);
+  }
+  oneOf(add, "kind", spec.kind, [PLOT_CARD_KIND], `kind must be "${PLOT_CARD_KIND}".`);
+  if (spec.id !== undefined) {
+    const message = "id must be a non-empty string.";
+    filled(add, "id", spec.id, message);
+    if (typeof spec.id === "string" && spec.id.trim() !== "" && spec.id.length > PLOT_LIMITS.idLength) add("id", "length", message);
+  }
+  if (spec.title !== undefined) str(add, "title", spec.title, "title must be a string.");
+  if (spec.height !== undefined) finiteBetween(add, "height", spec.height, PLOT_LIMITS.height, `height must be ${PLOT_LIMITS.height[0]}..${PLOT_LIMITS.height[1]} pixels.`);
+  if (!isObject(spec.spec)) {
+    const message = "spec must be an object: the plot spec.";
+    if (spec.spec === undefined) add("spec", "required", message, PLOT_EXPECTED);
+    else wrongType(add, "spec", spec.spec, message);
+  }
+  const alt = "alt must be a non-empty string saying what the plot shows.";
+  if (spec.alt === undefined) add("alt", "required", alt, PLOT_EXPECTED);
+  else filled(add, "alt", spec.alt, alt);
+  if (typeof spec.alt === "string" && spec.alt.trim() !== "" && spec.alt.length > PLOT_LIMITS.alt) add("alt", "length", `alt must be at most ${PLOT_LIMITS.alt} characters.`);
+  return cardResult(issues);
 }
 
 export const plotCardKind: CardKindDefinition = {

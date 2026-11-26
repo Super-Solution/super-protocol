@@ -1,8 +1,35 @@
 # SPDX-License-Identifier: Apache-2.0
 """Python port of the Super Solution protocol validators and SSE parser."""
 
+from .chat_plugin import (
+    PLUGIN_TOOL_AUTHORITIES,
+    PLUGIN_TOOL_PRESETS,
+    panel_card_kinds,
+    plugin_tool_authority,
+    validate_chat_plugin_data,
+)
+from .issue import ISSUE_CODES, Issue, ManifestIssue, did_you_mean
+from .mapping import (
+    InputCounting,
+    UsageCounting,
+    finish_reason_from_gateway,
+    finish_reason_to_gateway,
+    meters_from_run_usage,
+    run_usage_from_meters,
+)
 from .placement import CARD_PLACEMENTS, can_place_card, is_card_placement
 from .ref import CARD_REF_LIMITS, CARD_REF_SCHEME, CardRef, format_card_ref, parse_card_ref, parse_chart_ref
+from .router import (
+    EXECUTION_STATUSES,
+    INFERENCE_FINISH_REASONS,
+    INFERENCE_ROLES,
+    STREAM_EVENT_TYPES,
+    InferenceStreamOutcome,
+    inference_stream_outcome,
+    validate_inference_message,
+    validate_inference_request,
+    validate_stream_event,
+)
 from .run import (
     RUN_CARD_ACTION_TYPES,
     RUN_EVENT_TYPES,
@@ -17,6 +44,14 @@ from .run import (
     validate_run_event,
 )
 from .sse import DEFAULT_MAX_FRAME_BYTES, Frame, SSEParser, StreamFrameTooLarge
+from .theme import (
+    THEME_TOKENS,
+    THEME_VALUE_MAX_LENGTH,
+    HostTheme,
+    is_theme_value,
+    read_host_theme,
+    theme_variables,
+)
 from .validators import (
     CHART_CARD_KIND,
     CHART_LIMITS,
@@ -27,7 +62,6 @@ from .validators import (
     PLOT_LIMITS,
     PLUGIN_MANIFEST_VERSION,
     CardResult,
-    ManifestIssue,
     is_terminal_event,
     validate_chart_annotation,
     validate_chart_annotations,
@@ -39,8 +73,53 @@ from .validators import (
     validate_plugin_manifest,
     validate_symbol,
 )
+from .version import (
+    PROTOCOL_FEATURES,
+    PROTOCOL_VERSION,
+    ParsedProtocolFeature,
+    ParsedProtocolVersion,
+    compare_protocol_versions,
+    parse_protocol_feature,
+    parse_protocol_version,
+)
 
 __all__ = [
+    "PROTOCOL_FEATURES",
+    "PROTOCOL_VERSION",
+    "ParsedProtocolFeature",
+    "ParsedProtocolVersion",
+    "compare_protocol_versions",
+    "parse_protocol_feature",
+    "parse_protocol_version",
+    "InputCounting",
+    "UsageCounting",
+    "finish_reason_from_gateway",
+    "finish_reason_to_gateway",
+    "meters_from_run_usage",
+    "run_usage_from_meters",
+    "ISSUE_CODES",
+    "Issue",
+    "did_you_mean",
+    "EXECUTION_STATUSES",
+    "INFERENCE_FINISH_REASONS",
+    "INFERENCE_ROLES",
+    "PLUGIN_TOOL_AUTHORITIES",
+    "PLUGIN_TOOL_PRESETS",
+    "STREAM_EVENT_TYPES",
+    "THEME_TOKENS",
+    "THEME_VALUE_MAX_LENGTH",
+    "HostTheme",
+    "InferenceStreamOutcome",
+    "inference_stream_outcome",
+    "is_theme_value",
+    "panel_card_kinds",
+    "plugin_tool_authority",
+    "read_host_theme",
+    "theme_variables",
+    "validate_chat_plugin_data",
+    "validate_inference_message",
+    "validate_inference_request",
+    "validate_stream_event",
     "CARD_PLACEMENTS",
     "can_place_card",
     "is_card_placement",

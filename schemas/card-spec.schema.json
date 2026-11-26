@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Super-Solution/super-protocol/main/schemas/card-spec.schema.json",
+  "title": "Card spec",
+  "description": "The envelope every card spec shares: a `kind` that routes it to a renderer. The rest belongs to that kind (see the card-* schemas). Structure only. A value this schema accepts can still be refused by the validator: rules across fields (duplicates, a tool result that answers no call, ordering, limits that count UTF-16 units) are checked by the validators and pinned by conformance/protocol.v1.json, not here. A value the validators accept always validates.",
+  "type": "object",
+  "required": [
+    "kind"
+  ],
+  "properties": {
+    "kind": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

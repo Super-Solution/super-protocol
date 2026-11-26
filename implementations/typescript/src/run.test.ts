@@ -33,19 +33,19 @@ describe("run events", () => {
   it("knows every type it validates", () => {
     expect(RUN_EVENT_TYPES).toHaveLength(21);
     for (const type of RUN_EVENT_TYPES) expect(validateRunEvent({ type }).some((i) => i.message === "unknown run event type"), type).toBe(false);
-    expect(validateRunEvent({ type: "resync" })).toEqual([{ path: "type", message: "unknown run event type" }]);
+    expect(validateRunEvent({ type: "resync" })).toEqual([{ path: "type", code: "enum", message: "unknown run event type" }]);
     expect(isRunEventType("resync")).toBe(false);
     expect(isRunEventType("run-snapshot")).toBe(true);
   });
   it("says where an event is wrong", () => {
     expect(validateRunEvent({ type: "run-finish", runId: "", finishReason: "done", steps: 1.5 })).toEqual([
-      { path: "runId", message: "must be a non-empty string" },
-      { path: "finishReason", message: "must be one of stop, length, tool-calls, content-filter, cancelled, error, unknown" },
-      { path: "usage", message: "must be an object" },
-      { path: "steps", message: "must be a non-negative integer" },
+      { path: "runId", code: "empty", message: "must be a non-empty string" },
+      { path: "finishReason", code: "enum", message: "must be one of stop, length, tool-calls, content-filter, cancelled, error, unknown" },
+      { path: "usage", code: "required", message: "must be an object" },
+      { path: "steps", code: "range", message: "must be a non-negative integer" },
     ]);
     expect(validateRunEvent({ type: "awaiting-user", callId: "c", card: { id: "k", spec: {} } })).toEqual([
-      { path: "card.spec.kind", message: "must be a non-empty string" },
+      { path: "card.spec.kind", code: "required", message: "must be a non-empty string" },
     ]);
   });
   it("leaves tool input, output and card payloads alone", () => {

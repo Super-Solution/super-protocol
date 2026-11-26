@@ -1,0 +1,311 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Super-Solution/super-protocol/main/schemas/stream-event.schema.json",
+  "title": "Inference stream event",
+  "description": "One event of a gateway's stream. A consumer skips an event type it does not know. Structure only. A value this schema accepts can still be refused by the validator: rules across fields (duplicates, a tool result that answers no call, ordering, limits that count UTF-16 units) are checked by the validators and pinned by conformance/protocol.v1.json, not here. A value the validators accept always validates.",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "request_id",
+        "sequence",
+        "service_version"
+      ],
+      "properties": {
+        "type": {
+          "const": "request.started"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "service_version": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "request_id",
+        "sequence",
+        "text"
+      ],
+      "properties": {
+        "type": {
+          "const": "output.delta"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "text": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "request_id",
+        "sequence",
+        "index",
+        "arguments_delta"
+      ],
+      "properties": {
+        "type": {
+          "const": "output.tool_call.delta"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "arguments_delta": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_\\-]{1,64}$"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "request_id",
+        "sequence",
+        "index",
+        "id",
+        "name",
+        "arguments"
+      ],
+      "properties": {
+        "type": {
+          "const": "output.tool_call.completed"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_\\-]{1,64}$"
+        },
+        "arguments": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "request_id",
+        "sequence",
+        "execution_status",
+        "billing_status"
+      ],
+      "properties": {
+        "type": {
+          "const": "request.completed"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "execution_status": {
+          "enum": [
+            "succeeded",
+            "failed",
+            "cancelled",
+            "unknown"
+          ]
+        },
+        "billing_status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "finish_reason": {
+          "enum": [
+            "stop",
+            "length",
+            "tool_calls"
+          ]
+        },
+        "usage": {
+          "$ref": "#/$defs/inferenceUsage"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "request_id",
+        "sequence"
+      ],
+      "properties": {
+        "type": {
+          "const": "request.failed"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "execution_status": {
+          "enum": [
+            "succeeded",
+            "failed",
+            "cancelled",
+            "unknown"
+          ]
+        },
+        "billing_status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "error": {
+          "type": "object",
+          "required": [
+            "code"
+          ],
+          "properties": {
+            "code": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "usage": {
+          "$ref": "#/$defs/inferenceUsage"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "request_id",
+        "sequence"
+      ],
+      "properties": {
+        "type": {
+          "const": "request.replayed"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "meters": {
+      "type": "object",
+      "required": [
+        "input",
+        "cached",
+        "cache_write",
+        "output"
+      ],
+      "properties": {
+        "input": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cached": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cache_write": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "output": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "images": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "video_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "audio_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tasks": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "inferenceUsage": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "meters": {
+          "$ref": "#/$defs/meters"
+        }
+      }
+    }
+  }
+}

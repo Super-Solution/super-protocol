@@ -7,23 +7,44 @@ from pathlib import Path
 from typing import Any
 
 from super_protocol import (
+    ISSUE_CODES,
     PLOT_FALLBACK_MESSAGE,
+    PLUGIN_TOOL_PRESETS,
+    PROTOCOL_FEATURES,
+    PROTOCOL_VERSION,
     SSEParser,
     StreamFrameTooLarge,
     can_place_card,
+    compare_protocol_versions,
+    did_you_mean,
+    finish_reason_from_gateway,
+    finish_reason_to_gateway,
     format_card_ref,
+    inference_stream_outcome,
     is_card_placement,
     is_run_event_type,
     is_run_terminal_event,
     is_terminal_event,
+    meters_from_run_usage,
+    panel_card_kinds,
     parse_card_ref,
     parse_chart_ref,
+    parse_protocol_feature,
+    parse_protocol_version,
+    plugin_tool_authority,
+    read_host_theme,
     run_stream_outcome,
+    run_usage_from_meters,
+    theme_variables,
     validate_chart_card_spec,
+    validate_chat_plugin_data,
     validate_editor_card_spec,
+    validate_inference_message,
+    validate_inference_request,
     validate_plot_card_spec,
     validate_plugin_manifest,
     validate_run_event,
+    validate_stream_event,
 )
 
 DATA = json.loads((Path(__file__).resolve().parents[3] / "conformance" / "protocol.v1.json").read_text())
@@ -48,6 +69,44 @@ class Conformance(unittest.TestCase):
         for i, case in enumerate(cases):
             with self.subTest(case=key, i=i):
                 self.assertEqual(fn(case), case["expect"])
+
+    def test_issue_codes(self) -> None:
+        self.assertEqual(list(ISSUE_CODES), DATA["issue_codes"]["codes"])
+
+    def test_mapping(self) -> None:
+        def run(c: dict[str, Any]) -> dict[str, Any]:
+            try:
+                if c["fn"] == "finish_from_gateway":
+                    return {"value": finish_reason_from_gateway(c["value"])}
+                if c["fn"] == "finish_to_gateway":
+                    return {"value": finish_reason_to_gateway(c["value"])}
+                if c["fn"] == "usage_from_meters":
+                    return {"value": run_usage_from_meters(c["meters"], c["counting"])}
+                return {"value": meters_from_run_usage(c["usage"], c["counting"])}
+            except ValueError as e:
+                return {"error": str(e)}
+
+        self.check("mapping", run, 120)
+
+    def test_protocol_version(self) -> None:
+        self.assertEqual(PROTOCOL_VERSION, DATA["protocol"]["version"])
+        self.assertEqual(list(PROTOCOL_FEATURES), DATA["protocol"]["features"])
+
+        def run(c: dict[str, Any]) -> Any:
+            if c["fn"] == "parse":
+                v = parse_protocol_version(c["value"])
+                return None if v is None else {"major": v.major, "minor": v.minor}
+            if c["fn"] == "compare":
+                return compare_protocol_versions(c["a"], c["b"])
+            f = parse_protocol_feature(c["value"])
+            if f is None:
+                return None
+            return {"name": f.name, "major": f.version.major, "minor": f.version.minor}
+
+        self.check("protocol_version", run, 60)
+
+    def test_did_you_mean(self) -> None:
+        self.check("did_you_mean", lambda c: did_you_mean(c["value"], c["allowed"]), 25)
 
     def test_plugin_manifest(self) -> None:
         self.check("plugin_manifest", lambda c: validate_plugin_manifest(c["value"]), 100)
@@ -99,6 +158,36 @@ class Conformance(unittest.TestCase):
             lambda c: {"valid": is_card_placement(c["value"]), "allowed": can_place_card(c["interactive"], c["value"])},
             30,
         )
+
+    def test_host_theme(self) -> None:
+        def run(c: dict[str, Any]) -> dict[str, Any]:
+            theme = read_host_theme(c["value"])
+            return {"theme": theme, "variables": None if theme is None else theme_variables(theme)}
+
+        self.check("host_theme", run, 100)
+
+    def test_tool_authority(self) -> None:
+        def run(c: dict[str, Any]) -> dict[str, Any]:
+            authority = plugin_tool_authority(c["tool"])
+            presets = [] if authority is None else list(PLUGIN_TOOL_PRESETS[authority])
+            return {"authority": authority, "presets": presets}
+
+        self.check("tool_authority", run, 20)
+
+    def test_chat_plugin(self) -> None:
+        def run(c: dict[str, Any]) -> dict[str, Any]:
+            manifest = c["plugin"].get("manifest")
+            issues = validate_chat_plugin_data(c["plugin"])
+            panel = None if validate_plugin_manifest(manifest) else panel_card_kinds(manifest)
+            return {"issues": issues, "panel_kinds": panel}
+
+        self.check("chat_plugin", run, 40)
+
+    def test_inference(self) -> None:
+        self.check("inference_message", lambda c: validate_inference_message(c["value"]), 80)
+        self.check("inference_request", lambda c: validate_inference_request(c["value"]), 200)
+        self.check("stream_event", lambda c: validate_stream_event(c["value"]), 400)
+        self.check("inference_stream_outcome", lambda c: inference_stream_outcome(c["events"]), 15)
 
     def test_sse(self) -> None:
         self.check("sse", run_sse, 300)

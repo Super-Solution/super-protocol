@@ -13,15 +13,26 @@ pnpm typecheck
 pnpm test
 
 echo "== conformance data is reproducible"
-cp conformance/protocol.v1.json /tmp/protocol.v1.json.before
+before="$(mktemp -d)"
+cp conformance/protocol.v1.json conformance/index.json "$before/"
 pnpm conformance:export >/dev/null
-if ! cmp -s conformance/protocol.v1.json /tmp/protocol.v1.json.before; then
-  echo "conformance/protocol.v1.json drifted from the TypeScript reference; review the diff" >&2
-  exit 1
-fi
+for f in protocol.v1.json index.json; do
+  if ! cmp -s "conformance/$f" "$before/$f"; then
+    echo "conformance/$f drifted from the TypeScript reference; review the diff" >&2
+    exit 1
+  fi
+done
 
 echo "== agent loop cases are reproducible from their source"
 node scripts/export-agent-loop.mjs --check
+node scripts/export-index.mjs --check
+echo "== json schemas are reproducible from the package"
+node scripts/export-schemas.mjs --check
+echo "== draft interop golden files are reproducible (AG-UI and AI SDK also valid for the real @ag-ui/core and ai packages)"
+node scripts/export-interop-ag-ui.mjs --check
+node scripts/export-interop-ai-sdk.mjs --check
+node scripts/export-interop-mcp.mjs --check
+node scripts/export-interop-otel.mjs --check
 # The repair cases are generated from Super Chat's repair.ts: checked only when a Super Chat checkout is known.
 if [ -n "${SUPER_CHAT_DIR:-}" ]; then
   node scripts/export-tool-repair.mjs --check
@@ -30,6 +41,9 @@ fi
 
 echo "== go"
 (cd implementations/go && go vet ./... && test -z "$(gofmt -l .)" && go test ./...)
+echo "== go, through the language-neutral runner"
+node scripts/conformance-run-selftest.mjs
+node scripts/conformance-run.mjs --require-all --command "cd implementations/go && go run ./conformance-shim"
 
 if [ "${SKIP_RUST:-0}" != "1" ]; then
   echo "== rust (agent loop)"
@@ -42,5 +56,7 @@ if [ "${SKIP_PYTHON:-0}" != "1" ]; then
   python3 -m venv "$venv"
   "$venv/bin/pip" install -q -e "implementations/python[dev]"
   (cd implementations/python && "$venv/bin/pytest" -q && "$venv/bin/ruff" check . && "$venv/bin/mypy")
+  echo "== python, through the language-neutral runner"
+  node scripts/conformance-run.mjs --require-all --command "$venv/bin/python implementations/python/conformance-shim/shim.py"
 fi
 echo "all checks passed"

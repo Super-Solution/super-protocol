@@ -12,8 +12,10 @@ from collections.abc import Callable, Iterable
 from typing import Any, Literal
 
 from . import _js as js
+from ._check import Checker
 from ._js import UNDEFINED, get
-from .validators import ManifestIssue
+from .issue import ManifestIssue, did_you_mean
+from .version import PROTOCOL_VERSION_MESSAGE, PROTOCOL_VERSION_PATTERN
 
 RUN_EVENT_TYPES = (
     "run-start",
@@ -50,64 +52,22 @@ RunEventIssue = ManifestIssue
 RunStreamOutcome = Literal["empty", "finished", "awaiting-user", "interrupted"]
 
 
-def _is_count(value: Any) -> bool:
-    return js.is_integer(value) and value >= 0
-
-
-def _is_amount(value: Any) -> bool:
-    return js.finite(value) and value >= 0
-
-
-class _Checker:
-    def __init__(self) -> None:
-        self.issues: list[RunEventIssue] = []
-
-    def add(self, path: str, message: str) -> None:
-        self.issues.append({"path": path, "message": message})
-
-    def text(self, path: str, value: Any) -> None:
-        if not js.is_string(value) or value == "":
-            self.add(path, "must be a non-empty string")
-
-    def one_of(self, path: str, value: Any, allowed: tuple[str, ...]) -> None:
-        if not js.is_string(value) or value not in allowed:
-            self.add(path, f"must be one of {', '.join(allowed)}")
-
-    def count(self, path: str, value: Any) -> None:
-        if not _is_count(value):
-            self.add(path, "must be a non-negative integer")
-
-    def amount(self, path: str, value: Any) -> None:
-        if not _is_amount(value):
-            self.add(path, "must be a non-negative number")
-
-    def object(self, path: str, value: Any) -> None:
-        if not js.is_object(value):
-            self.add(path, "must be an object")
-
-    def string(self, path: str, value: Any) -> None:
-        if not js.is_string(value):
-            self.add(path, "must be a string")
-
-    def boolean(self, path: str, value: Any) -> None:
-        if not isinstance(value, bool):
-            self.add(path, "must be a boolean")
-
+class _Checker(Checker):
     def usage(self, path: str, value: Any) -> None:
         if not js.is_object(value):
-            return self.add(path, "must be an object")
+            return self.wrong_type(path, value, "must be an object")
         for field in _USAGE_FIELDS:
             if get(value, field) is not UNDEFINED:
                 self.amount(f"{path}.{field}", get(value, field))
 
     def spec(self, path: str, value: Any) -> None:
         if not js.is_object(value):
-            return self.add(path, "must be an object")
+            return self.wrong_type(path, value, "must be an object")
         self.text(f"{path}.kind", get(value, "kind"))
 
     def action(self, path: str, value: Any) -> None:
         if not js.is_object(value):
-            return self.add(path, "must be an object")
+            return self.wrong_type(path, value, "must be an object")
         self.text(f"{path}.cardId", get(value, "cardId"))
         if get(value, "callId") is not UNDEFINED:
             self.text(f"{path}.callId", get(value, "callId"))
@@ -117,7 +77,7 @@ class _Checker:
 
     def card(self, path: str, value: Any) -> None:
         if not js.is_object(value):
-            return self.add(path, "must be an object")
+            return self.wrong_type(path, value, "must be an object")
         self.text(f"{path}.id", get(value, "id"))
         self.spec(f"{path}.spec", get(value, "spec"))
         if get(value, "expired") is not UNDEFINED:
@@ -129,16 +89,16 @@ class _Checker:
 
     def parts(self, path: str, value: Any) -> None:
         if not isinstance(value, list):
-            return self.add(path, "must be an array")
+            return self.wrong_type(path, value, "must be an array")
         for i, part in enumerate(value):
             if not js.is_object(part):
-                self.add(f"{path}[{i}]", "must be an object")
+                self.wrong_type(f"{path}[{i}]", part, "must be an object")
                 continue
             self.text(f"{path}[{i}].type", get(part, "type"))
 
     def handle(self, path: str, value: Any) -> None:
         if not js.is_object(value):
-            return self.add(path, "must be an object")
+            return self.wrong_type(path, value, "must be an object")
         self.text(f"{path}.provider", get(value, "provider"))
         self.text(f"{path}.id", get(value, "id"))
 
@@ -154,12 +114,14 @@ def validate_run_event(value: Any) -> list[RunEventIssue]:
     For whoever produces events. A follower should not refuse a stream over an event type it does not
     know (see `is_run_event_type`); later versions add types.
     """
+    c = _Checker()
     if not js.is_object(value):
-        return [{"path": "", "message": "event must be an object"}]
+        c.wrong_type("", value, "event must be an object")
+        return c.issues
     kind = get(value, "type")
     if not js.is_string(kind):
-        return [{"path": "type", "message": "must be a string"}]
-    c = _Checker()
+        c.wrong_type("type", kind, "must be a string")
+        return c.issues
 
     def field(key: str) -> Any:
         return get(value, key)
@@ -167,11 +129,15 @@ def validate_run_event(value: Any) -> list[RunEventIssue]:
     if kind == "run-start":
         c.text("runId", field("runId"))
         c.one_of("mode", field("mode"), RUN_MODES)
+        if field("threadId") is not UNDEFINED:
+            c.text("threadId", field("threadId"))
+        if field("protocol") is not UNDEFINED:
+            c.pattern("protocol", field("protocol"), PROTOCOL_VERSION_PATTERN, PROTOCOL_VERSION_MESSAGE)
     elif kind == "run-snapshot":
         c.parts("parts", field("parts"))
         cards = field("cards")
         if not isinstance(cards, list):
-            c.add("cards", "must be an array")
+            c.wrong_type("cards", cards, "must be an array")
         else:
             for i, card in enumerate(cards):
                 c.card(f"cards[{i}]", card)
@@ -182,7 +148,7 @@ def validate_run_event(value: Any) -> list[RunEventIssue]:
         c.string("system", field("system"))
         names = field("toolNames")
         if not isinstance(names, list):
-            c.add("toolNames", "must be an array")
+            c.wrong_type("toolNames", names, "must be an array")
         else:
             for i, name in enumerate(names):
                 c.string(f"toolNames[{i}]", name)
@@ -190,6 +156,8 @@ def validate_run_event(value: Any) -> list[RunEventIssue]:
         c.count("step", field("step"))
     elif kind in ("text-delta", "reasoning-delta"):
         c.string("delta", field("delta"))
+        if field("id") is not UNDEFINED:
+            c.text("id", field("id"))
     elif kind == "tool-call-input-delta":
         c.text("callId", field("callId"))
         c.text("name", field("name"))
@@ -239,7 +207,10 @@ def validate_run_event(value: Any) -> list[RunEventIssue]:
     elif kind == "error":
         c.boolean("recoverable", field("recoverable"))
     else:
-        c.add("type", "unknown run event type")
+        c.add("type", "enum", "unknown run event type", did_you_mean(kind, RUN_EVENT_TYPES))
+        return c.issues
+    if field("seq") is not UNDEFINED:
+        c.count("seq", field("seq"))
     return c.issues
 
 

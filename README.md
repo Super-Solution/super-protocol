@@ -4,7 +4,7 @@ The shared contract of the Super Solution libs, as one Apache-2.0 specification 
 implementations that are tested against the same data.
 
 ```
-conformance/                 language-neutral test data (protocol.v1.json), generated from the TypeScript reference
+conformance/                 language-neutral test data (protocol.v1.json, the agent-loop files) and index.json, which lists every file, its sections and case counts
 implementations/typescript/  @supersolutions/super-protocol, the reference (types + validators + SSE parser)
 implementations/go/          Go port (standard library only)
 implementations/python/      Python port, package `super-protocol` (standard library only)
@@ -20,8 +20,11 @@ licenses**. This repository is that neutral ground:
 
 - **Plugin manifest and chat plugin**: what a plugin declares (capabilities, card kinds, tools) and
   how a host mounts it, framework-neutral.
-- **Inference gateway and stream events**: the request, usage and stream-event types plus an
+- **Inference gateway and stream events**: the request, usage and stream-event types, validators for a request, a
+  message and a stream event (`validateInferenceRequest`, `validateInferenceMessage`, `validateStreamEvent`), and an
   incremental SSE parser.
+- **Host theme and tool authority**: the colour and font tokens a host passes to plugin cards (`readHostTheme`,
+  `themeVariables`) and what a tool declares it can do (`read`, `draft`, `act`), in all three languages.
 - **Run events**: what an agent turn reports while it runs (text, tool calls, cards that wait for the person, usage,
   the end), the same whether the loop runs in the page or on a server in any language, and what a stream that
   stopped means for its run (see [`docs/RUN-EVENTS.md`](docs/RUN-EVENTS.md)).
@@ -30,6 +33,22 @@ licenses**. This repository is that neutral ground:
   arguments. Pinned by `conformance/agent-loop.v0.json` and `conformance/tool-repair.v0.json`, which a TypeScript machine,
   a Rust crate and Super Chat's real `runAgent` are all tested against, plus a shadow replay of whole runs from wire bytes
   (`conformance/agent-loop-replay.v0.json`, expected values produced by `runAgent`; see [`docs/AGENT-LOOP.md`](docs/AGENT-LOOP.md)).
+- **Issues**: every validator returns all its problems as `{ path, code, message, hint? }`, where `code` is one of a closed
+  set of 13 words that is the same in all three languages (see [`docs/ISSUES.md`](docs/ISSUES.md)).
+- **Protocol version and features**: `PROTOCOL_VERSION`, `PROTOCOL_FEATURES` and an optional `protocol` field on a plugin
+  manifest and on `run-start`, so data says what it was written against (see [`docs/VERSIONING.md`](docs/VERSIONING.md)).
+- **JSON Schema** (2020-12): `schemas/*.schema.json` for the plugin manifest, a run event, a card and its answer, an
+  inference request, message and stream event, and a host theme, so a language with no port here can generate its
+  types from them (see [`docs/SCHEMAS.md`](docs/SCHEMAS.md)).
+- **Conformance runner**: `scripts/conformance-run.mjs` runs `conformance/protocol.v1.json` against a program in any
+  language over stdin and stdout, so a new implementation needs a loop of a few lines, not a harness (see
+  [`docs/CONFORMANCE-RUNNER.md`](docs/CONFORMANCE-RUNNER.md)).
+- **Interop** (draft): `interop/ag-ui` and `interop/ai-sdk` turn run events into AG-UI events and into the Vercel AI SDK
+  UI message stream and back, as small state machines with no runtime dependency, and say what the other side cannot carry.
+  Pinned by `conformance/interop-ag-ui.v0.json` and `conformance/interop-ai-sdk.v0.json`, which are checked against the real
+  `@ag-ui/core` and `ai` packages. `interop/mcp` (tool annotations, MCP Apps theme variables, display mode, elicitation
+  actions) and `interop/otel` (GenAI span attributes) are pure functions pinned by `conformance/interop-mcp.v0.json` and
+  `conformance/interop-otel.v0.json`, not checked against an MCP or OpenTelemetry package (see [`docs/INTEROP.md`](docs/INTEROP.md)).
 - **Card references**: the `ref:` link that lets text in a message point into a card, and the `ref()` method a card
   answers it with (see [`docs/CARD-REFS.md`](docs/CARD-REFS.md)).
 - **Card placement**: the same card shown inline in a conversation, in a host's side panel or inside a
@@ -78,10 +97,11 @@ fixed shape this protocol validates in full.
 
 ## Conformance
 
-`conformance/protocol.v1.json` holds roughly 2,200 cases (plugin manifests, editor, chart and plot cards,
-card references, terminal events, run events, SSE byte streams). The TypeScript package produces them; Go and Python must
-reproduce every case exactly, error messages included. See
-[`conformance/README.md`](conformance/README.md). If behaviour changes on purpose, regenerate, review
+`conformance/protocol.v1.json` holds the cases of every shape in this repository: plugin manifests, editor, chart and plot
+cards, card references, card placement, terminal events, run events, SSE byte streams. The TypeScript package produces them;
+Go and Python must reproduce every case exactly, error messages included. How many cases each section holds is in
+[`conformance/index.json`](conformance/index.json), which the gate regenerates and checks, so no document repeats a count
+that can drift. See [`conformance/README.md`](conformance/README.md). If behaviour changes on purpose, regenerate, review
 the diff and update every port.
 
 ## Develop
@@ -91,13 +111,14 @@ bash scripts/check-all.sh        # typescript, conformance reproducibility, go, 
 SKIP_PYTHON=1 bash scripts/check-all.sh
 ```
 
-Requires Node 22 with pnpm 9, Go 1.22+ and Python 3.10+. Hosted CI is not used; the script above is
-the gate.
+Requires Node 20 or newer (the TypeScript gate was run on 20, 22 and 24) with pnpm 9, Go 1.22+ and Python 3.10+; the Rust crate is
+checked too unless `SKIP_RUST=1`. Hosted CI is not used; the script above is the gate.
 
 ## Status
 
-v0. Shapes may change before 1.0. Nothing is published to npm, PyPI or a Go proxy yet; until then
-consumers use a workspace link or a local build (see super-chart's `docs/LOCAL-DEVELOPMENT.md`).
+v0. Shapes may change before 1.0. The TypeScript package `@supersolutions/super-protocol` is published to npm by the manual
+workflow in [`docs/NPM-PUBLISHING.md`](docs/NPM-PUBLISHING.md). The Go and Python ports and the Rust crate are not published
+anywhere yet; use a local checkout.
 
 ## Contributing
 

@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Super-Solution/super-protocol/main/schemas/card-super-editor.schema.json",
+  "title": "Card spec: super-editor.document",
+  "description": "The spec of a `super-editor.document` card. A research document the user can read and edit in place: headings, text, tables, charts and citations. Structure only. A value this schema accepts can still be refused by the validator: rules across fields (duplicates, a tool result that answers no call, ordering, limits that count UTF-16 units) are checked by the validators and pinned by conformance/protocol.v1.json, not here. A value the validators accept always validates.",
+  "type": "object",
+  "required": [
+    "kind"
+  ],
+  "properties": {
+    "kind": {
+      "const": "super-editor.document"
+    },
+    "title": {
+      "type": "string"
+    },
+    "mode": {
+      "enum": [
+        "view",
+        "edit"
+      ]
+    },
+    "document": {
+      "type": "object",
+      "description": "A schemaVersion 1 report document."
+    },
+    "service": {
+      "type": "object",
+      "properties": {
+        "baseUrl": {
+          "type": "string"
+        },
+        "documentId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "baseUrl",
+        "documentId"
+      ]
+    }
+  }
+}

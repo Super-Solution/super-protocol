@@ -15,7 +15,9 @@
  * Transport is not prescribed. Over server-sent events, one event is one frame
  * whose `data` is the event as JSON.
  */
-import type { ManifestIssue } from "./plugin.js";
+import { amount, bool, count, isObject, obj, oneOf, pattern, str, text, wrongType, type Fields } from "./check.js";
+import { collector, didYouMean, type Add, type Issue } from "./issue.js";
+import { PROTOCOL_VERSION_PATTERN } from "./version.js";
 
 /** Every run event type, in the order a simple turn tends to produce them. */
 export const RUN_EVENT_TYPES = [
@@ -105,8 +107,24 @@ export type RunJobHandle = { provider: string; id: string } & Record<string, unk
  * `tool-call`, then its `card` / `awaiting-user` / `user-responded`, then exactly one `tool-result`,
  * failures included. All of a step's results arrive before the next `step-start`.
  */
-export type RunEvent =
-  | { type: "run-start"; runId: string; mode: RunMode }
+export type RunEvent = RunEventBody & {
+  /**
+   * Optional, on any event: a counter that rises by one with each event of a run, so a follower can see that it missed
+   * some. A producer that numbers its events numbers all of them, from 0.
+   */
+  seq?: number;
+};
+
+type RunEventBody =
+  | {
+      type: "run-start";
+      runId: string;
+      mode: RunMode;
+      /** Optional: the conversation this run belongs to, for a follower that groups runs. Absent when the host keeps no thread. */
+      threadId?: string;
+      /** Optional: the protocol version (`major.minor`, see `version.ts`) the producer of this stream was written against. */
+      protocol?: string;
+    }
   /**
    * Everything the run has produced so far. It REPLACES what the follower holds: sent to a follower
    * that joins part-way or lost part of the stream. A card still waiting is announced again with
@@ -116,8 +134,9 @@ export type RunEvent =
   /** What was sent to the model and why. Optional; inspectors read it. */
   | { type: "context-built"; trace: Record<string, unknown>; system: string; toolNames: string[] }
   | { type: "step-start"; step: number }
-  | { type: "text-delta"; delta: string }
-  | { type: "reasoning-delta"; delta: string }
+  /** `id`, when given, names the message the text belongs to; without one a follower uses `${runId}:${step}`. */
+  | { type: "text-delta"; delta: string; id?: string }
+  | { type: "reasoning-delta"; delta: string; id?: string }
   /** A preview of a tool call's arguments while the model is still writing them. Never stored. */
   | {
       type: "tool-call-input-delta";
@@ -148,73 +167,56 @@ export type RunEvent =
   /** A run that failed sends this with `recoverable: false`, then `run-finish` with `finishReason: "error"`. */
   | { type: "error"; error: unknown; recoverable: boolean };
 
-export type RunEventIssue = ManifestIssue;
+export type RunEventIssue = Issue;
 
 const USAGE_FIELDS = ["inputTokens", "outputTokens", "totalTokens", "cachedInputTokens", "reasoningTokens"] as const;
 
-type Add = (path: string, message: string) => void;
-type Fields = Record<string, unknown>;
-
-const isObject = (v: unknown): v is Fields => typeof v === "object" && v !== null && !Array.isArray(v);
-const isCount = (v: unknown): boolean => typeof v === "number" && Number.isInteger(v) && v >= 0;
-const isAmount = (v: unknown): boolean => typeof v === "number" && Number.isFinite(v) && v >= 0;
-
-function text(add: Add, path: string, v: unknown): void {
-  if (typeof v !== "string" || v === "") add(path, "must be a non-empty string");
-}
-function oneOf(add: Add, path: string, v: unknown, allowed: readonly string[]): void {
-  if (typeof v !== "string" || !allowed.includes(v)) add(path, `must be one of ${allowed.join(", ")}`);
-}
-function count(add: Add, path: string, v: unknown): void {
-  if (!isCount(v)) add(path, "must be a non-negative integer");
-}
-
 function usage(add: Add, path: string, v: unknown): void {
-  if (!isObject(v)) return add(path, "must be an object");
+  if (!isObject(v)) return wrongType(add, path, v, "must be an object");
   for (const field of USAGE_FIELDS) {
-    if (v[field] !== undefined && !isAmount(v[field])) add(`${path}.${field}`, "must be a non-negative number");
+    if (v[field] !== undefined) amount(add, `${path}.${field}`, v[field]);
   }
 }
 
 function spec(add: Add, path: string, v: unknown): void {
-  if (!isObject(v)) return add(path, "must be an object");
+  if (!isObject(v)) return wrongType(add, path, v, "must be an object");
   text(add, `${path}.kind`, v.kind);
 }
 
 function action(add: Add, path: string, v: unknown): void {
-  if (!isObject(v)) return add(path, "must be an object");
+  if (!isObject(v)) return wrongType(add, path, v, "must be an object");
   text(add, `${path}.cardId`, v.cardId);
   if (v.callId !== undefined) text(add, `${path}.callId`, v.callId);
   text(add, `${path}.kind`, v.kind);
   oneOf(add, `${path}.type`, v.type, RUN_CARD_ACTION_TYPES);
-  if (!isAmount(v.at)) add(`${path}.at`, "must be a non-negative number");
+  amount(add, `${path}.at`, v.at);
 }
 
 function card(add: Add, path: string, v: unknown): void {
-  if (!isObject(v)) return add(path, "must be an object");
+  if (!isObject(v)) return wrongType(add, path, v, "must be an object");
   text(add, `${path}.id`, v.id);
   spec(add, `${path}.spec`, v.spec);
-  if (v.expired !== undefined && typeof v.expired !== "boolean") add(`${path}.expired`, "must be a boolean");
+  if (v.expired !== undefined) bool(add, `${path}.expired`, v.expired);
   if (v.callId !== undefined) text(add, `${path}.callId`, v.callId);
   if (v.action !== undefined) action(add, `${path}.action`, v.action);
 }
 
 function parts(add: Add, path: string, v: unknown): void {
-  if (!Array.isArray(v)) return add(path, "must be an array");
+  if (!Array.isArray(v)) return wrongType(add, path, v, "must be an array");
   v.forEach((part: unknown, i) => {
-    if (!isObject(part)) return add(`${path}[${i}]`, "must be an object");
+    if (!isObject(part)) return wrongType(add, `${path}[${i}]`, part, "must be an object");
     text(add, `${path}[${i}].type`, part.type);
   });
 }
 
 function handle(add: Add, path: string, v: unknown): void {
-  if (!isObject(v)) return add(path, "must be an object");
+  if (!isObject(v)) return wrongType(add, path, v, "must be an object");
   text(add, `${path}.provider`, v.provider);
   text(add, `${path}.id`, v.id);
 }
 
 function loading(add: Add, e: Fields): void {
-  if (e.loading !== undefined && !isObject(e.loading)) add("loading", "must be an object");
+  if (e.loading !== undefined) obj(add, "loading", e.loading);
 }
 
 /**
@@ -225,38 +227,43 @@ function loading(add: Add, e: Fields): void {
  * add types.
  */
 export function validateRunEvent(value: unknown): RunEventIssue[] {
-  const issues: RunEventIssue[] = [];
-  const add: Add = (path, message) => issues.push({ path, message });
-  if (!isObject(value)) return [{ path: "", message: "event must be an object" }];
+  const { issues, add } = collector();
+  if (!isObject(value)) {
+    wrongType(add, "", value, "event must be an object");
+    return issues;
+  }
   const e = value;
-  if (typeof e.type !== "string") return [{ path: "type", message: "must be a string" }];
+  if (typeof e.type !== "string") {
+    wrongType(add, "type", e.type, "must be a string");
+    return issues;
+  }
   switch (e.type) {
     case "run-start":
       text(add, "runId", e.runId);
       oneOf(add, "mode", e.mode, RUN_MODES);
+      if (e.threadId !== undefined) text(add, "threadId", e.threadId);
+      if (e.protocol !== undefined) pattern(add, "protocol", e.protocol, PROTOCOL_VERSION_PATTERN, "must be a protocol version such as 0.5");
       break;
     case "run-snapshot":
       parts(add, "parts", e.parts);
-      if (!Array.isArray(e.cards)) add("cards", "must be an array");
+      if (!Array.isArray(e.cards)) wrongType(add, "cards", e.cards, "must be an array");
       else e.cards.forEach((c: unknown, i) => card(add, `cards[${i}]`, c));
       if (e.usage !== undefined) usage(add, "usage", e.usage);
       if (e.steps !== undefined) count(add, "steps", e.steps);
       break;
     case "context-built":
-      if (!isObject(e.trace)) add("trace", "must be an object");
-      if (typeof e.system !== "string") add("system", "must be a string");
-      if (!Array.isArray(e.toolNames)) add("toolNames", "must be an array");
-      else
-        e.toolNames.forEach((name: unknown, i) => {
-          if (typeof name !== "string") add(`toolNames[${i}]`, "must be a string");
-        });
+      obj(add, "trace", e.trace);
+      str(add, "system", e.system);
+      if (!Array.isArray(e.toolNames)) wrongType(add, "toolNames", e.toolNames, "must be an array");
+      else e.toolNames.forEach((name: unknown, i) => str(add, `toolNames[${i}]`, name));
       break;
     case "step-start":
       count(add, "step", e.step);
       break;
     case "text-delta":
     case "reasoning-delta":
-      if (typeof e.delta !== "string") add("delta", "must be a string");
+      str(add, "delta", e.delta);
+      if (e.id !== undefined) text(add, "id", e.id);
       break;
     case "tool-call-input-delta":
       text(add, "callId", e.callId);
@@ -267,7 +274,7 @@ export function validateRunEvent(value: unknown): RunEventIssue[] {
     case "tool-call":
       text(add, "callId", e.callId);
       text(add, "name", e.name);
-      if (e.repaired !== undefined && typeof e.repaired !== "boolean") add("repaired", "must be a boolean");
+      if (e.repaired !== undefined) bool(add, "repaired", e.repaired);
       loading(add, e);
       break;
     case "awaiting-user":
@@ -281,8 +288,8 @@ export function validateRunEvent(value: unknown): RunEventIssue[] {
     case "tool-result":
       text(add, "callId", e.callId);
       text(add, "name", e.name);
-      if (e.failure !== undefined && typeof e.failure !== "string") add("failure", "must be a string");
-      if (!isAmount(e.ms)) add("ms", "must be a non-negative number");
+      if (e.failure !== undefined) str(add, "failure", e.failure);
+      amount(add, "ms", e.ms);
       break;
     case "card":
       card(add, "card", e.card);
@@ -307,7 +314,7 @@ export function validateRunEvent(value: unknown): RunEventIssue[] {
       parts(add, "parts", e.parts);
       break;
     case "metering":
-      if (!isObject(e.record)) add("record", "must be an object");
+      obj(add, "record", e.record);
       break;
     case "usage":
       usage(add, "usage", e.usage);
@@ -319,11 +326,13 @@ export function validateRunEvent(value: unknown): RunEventIssue[] {
       count(add, "steps", e.steps);
       break;
     case "error":
-      if (typeof e.recoverable !== "boolean") add("recoverable", "must be a boolean");
+      bool(add, "recoverable", e.recoverable);
       break;
     default:
-      add("type", "unknown run event type");
+      add("type", "enum", "unknown run event type", didYouMean(e.type, RUN_EVENT_TYPES));
+      return issues;
   }
+  if (e.seq !== undefined) count(add, "seq", e.seq);
   return issues;
 }
 

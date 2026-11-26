@@ -90,8 +90,8 @@ _HOST_FORBIDDEN = set("\x00\t\n\r #/:<>?@[\\]^|%") | {chr(c) for c in range(0x20
 _IPV6 = re.compile(r"\[[0-9A-Fa-f:.]+\]")
 
 
-def is_http_url(text: str) -> bool:
-    """Whether `new URL(text)` succeeds with an http or https scheme.
+def is_http_url(text: str, https_only: bool = False) -> bool:
+    """Whether `new URL(text)` succeeds with an http or https scheme (https only when asked).
 
     Covers what a base URL realistically is: scheme, optional credentials, a host (name, IPv4 or
     bracketed IPv6) and an optional port, with the WHATWG leniency about extra slashes. Percent-encoded
@@ -99,7 +99,7 @@ def is_http_url(text: str) -> bool:
     """
     text = text.strip("".join(chr(c) for c in range(0x21))).translate({9: None, 10: None, 13: None})
     match = _SCHEME.match(text)
-    if not match:
+    if not match or (https_only and match.group(1).lower() != "https"):
         return False
     rest = text[match.end() :].lstrip("/\\")
     end = len(rest)

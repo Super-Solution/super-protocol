@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Super-Solution/super-protocol/main/schemas/host-theme.schema.json",
+  "title": "Host theme",
+  "description": "The colours and fonts a host passes to plugin cards: a mode and any subset of the tokens. A reader drops an unknown token or an unsafe value one by one; this schema describes the theme a host should send. Structure only. A value this schema accepts can still be refused by the validator: rules across fields (duplicates, a tool result that answers no call, ordering, limits that count UTF-16 units) are checked by the validators and pinned by conformance/protocol.v1.json, not here. A value the validators accept always validates.",
+  "type": "object",
+  "required": [
+    "mode",
+    "tokens"
+  ],
+  "properties": {
+    "mode": {
+      "enum": [
+        "light",
+        "dark"
+      ]
+    },
+    "tokens": {
+      "type": "object",
+      "properties": {
+        "background": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "\\S",
+          "not": {
+            "pattern": "[;{}<>\\\\]|/\\*|[uU][rR][lL]\\s*\\(|[eE][xX][pP][rR][eE][sS][sS][iI][oO][nN]\\s*\\(|@[iI][mM][pP][oO][rR][tT]"
+          }
+        },
+        "surface": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "\\S",
+          "not": {
+            "pattern": "[;{}<>\\\\]|/\\*|[uU][rR][lL]\\s*\\(|[eE][xX][pP][rR][eE][sS][sS][iI][oO][nN]\\s*\\(|@[iI][mM][pP][oO][rR][tT]"
+          }
+        },
+        "surface-raised": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "\\S",
+          "not": {
+            "pattern": "[;{}<>\\\\]|/\\*|[uU][rR][lL]\\s*\\(|[eE][xX][pP][rR][eE][sS][sS][iI][oO][nN]\\s*\\(|@[iI][mM][pP][oO][rR][tT]"
+          }
+        },
+        "border": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "\\S",
+          "not": {
+            "pattern": "[;{}<>\\\\]|/\\*|[uU][rR][lL]\\s*\\(|[eE][xX][pP][rR][eE][sS][sS][iI][oO][nN]\\s*\\(|@[iI][mM][pP][oO][rR][tT]"
+          }
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "\\S",
+          "not": {
+            "pattern": "[;{}<>\\\\]|/\\*|[uU][rR][lL]\\s*\\(|[eE][xX][pP][rR][eE][sS][sS][iI][oO][nN]\\s*\\(|@[iI][mM][pP][oO][rR][tT]"
+          }
+        },
+        "text-muted": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "\\S",
+          "not": {
+            "pattern": "[;{}<>\\\\]|/\\*|[uU][rR][lL]\\s*\\(|[eE][xX][pP][rR][eE][sS][sS][iI][oO][nN]\\s*\\(|@[iI][mM][pP][oO][rR][tT]"
+          }
+        },
+        "accent": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "\\S",
+          "not": {
+            "pattern": "[;{}<>\\\\]|/\\*|[uU][rR][lL]\\s*\\(|[eE][xX][pP][rR][eE][sS][sS][iI][oO][nN]\\s*\\(|@[iI][mM][pP][oO][rR][tT]"
+          }
+        },
+        "accent-contrast": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "\\S",
+          "not": {
+            "pattern": "[;{}<>\\\\]|/\\*|[uU][rR][lL]\\s*\\(|[eE][xX][pP][rR][eE][sS][sS][iI][oO][nN]\\s*\\(|@[iI][mM][pP][oO][rR][tT]"
+          }
+        },
+        "positive": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "\\S",
+          "not": {
+            "pattern": "[;{}<>\\\\]|/\\*|[uU][rR][lL]\\s*\\(|[eE][xX][pP][rR][eE][sS][sS][iI][oO][nN]\\s*\\(|@[iI][mM][pP][oO][rR][tT]"
+          }
+        },
+        "negative": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "\\S",
+          "not": {
+            "pattern": "[;{}<>\\\\]|/\\*|[uU][rR][lL]\\s*\\(|[eE][xX][pP][rR][eE][sS][sS][iI][oO][nN]\\s*\\(|@[iI][mM][pP][oO][rR][tT]"
+          }
+        },
+        "warning": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "\\S",
+          "not": {
+            "pattern": "[;{}<>\\\\]|/\\*|[uU][rR][lL]\\s*\\(|[eE][xX][pP][rR][eE][sS][sS][iI][oO][nN]\\s*\\(|@[iI][mM][pP][oO][rR][tT]"
+          }
+        },
+        "info": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "\\S",
+          "not": {
+            "pattern": "[;{}<>\\\\]|/\\*|[uU][rR][lL]\\s*\\(|[eE][xX][pP][rR][eE][sS][sS][iI][oO][nN]\\s*\\(|@[iI][mM][pP][oO][rR][tT]"
+          }
+        },
+        "font-sans": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "\\S",
+          "not": {
+            "pattern": "[;{}<>\\\\]|/\\*|[uU][rR][lL]\\s*\\(|[eE][xX][pP][rR][eE][sS][sS][iI][oO][nN]\\s*\\(|@[iI][mM][pP][oO][rR][tT]"
+          }
+        },
+        "font-mono": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "\\S",
+          "not": {
+            "pattern": "[;{}<>\\\\]|/\\*|[uU][rR][lL]\\s*\\(|[eE][xX][pP][rR][eE][sS][sS][iI][oO][nN]\\s*\\(|@[iI][mM][pP][oO][rR][tT]"
+          }
+        },
+        "radius": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "\\S",
+          "not": {
+            "pattern": "[;{}<>\\\\]|/\\*|[uU][rR][lL]\\s*\\(|[eE][xX][pP][rR][eE][sS][sS][iI][oO][nN]\\s*\\(|@[iI][mM][pP][oO][rR][tT]"
+          }
+        }
+      }
+    }
+  }
+}

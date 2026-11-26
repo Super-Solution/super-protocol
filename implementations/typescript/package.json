@@ -17,6 +17,9 @@
   ],
   "type": "module",
   "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -75,6 +78,36 @@
       "types": "./dist/theme.d.ts",
       "import": "./dist/theme.js",
       "default": "./dist/theme.js"
+    },
+    "./mapping": {
+      "types": "./dist/mapping.d.ts",
+      "import": "./dist/mapping.js",
+      "default": "./dist/mapping.js"
+    },
+    "./version": {
+      "types": "./dist/version.d.ts",
+      "import": "./dist/version.js",
+      "default": "./dist/version.js"
+    },
+    "./interop/ag-ui": {
+      "types": "./dist/interop/ag-ui.d.ts",
+      "import": "./dist/interop/ag-ui.js",
+      "default": "./dist/interop/ag-ui.js"
+    },
+    "./interop/ai-sdk": {
+      "types": "./dist/interop/ai-sdk.d.ts",
+      "import": "./dist/interop/ai-sdk.js",
+      "default": "./dist/interop/ai-sdk.js"
+    },
+    "./interop/mcp": {
+      "types": "./dist/interop/mcp.d.ts",
+      "import": "./dist/interop/mcp.js",
+      "default": "./dist/interop/mcp.js"
+    },
+    "./interop/otel": {
+      "types": "./dist/interop/otel.d.ts",
+      "import": "./dist/interop/otel.js",
+      "default": "./dist/interop/otel.js"
     }
   },
   "files": [
@@ -97,9 +130,13 @@
     "prepublishOnly": "pnpm run build"
   },
   "devDependencies": {
+    "@ag-ui/core": "1.0.4",
+    "@types/node": "^22.10.2",
+    "ai": "7.0.168",
+    "ajv": "8.17.1",
     "tsup": "^8.3.5",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8",
-    "@types/node": "^22.10.2"
+    "zod": "4.1.8"
   }
 }

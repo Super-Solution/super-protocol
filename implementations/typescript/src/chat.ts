@@ -4,7 +4,9 @@
  * Rendering is framework-neutral: a plugin mounts into a DOM element, and each
  * host adapts that to React, Vue, Svelte, and so on.
  */
-import { validatePluginManifest, type ManifestIssue, type PluginManifest } from "./plugin.js";
+import { bool, oneOf } from "./check.js";
+import { adder, type Issue } from "./issue.js";
+import { validatePluginManifest, type PluginManifest } from "./plugin.js";
 import type { CardRef, CardRefEvent, CardRefResult } from "./ref.js";
 import type { HostTheme } from "./theme.js";
 import type { CardPlacement } from "./placement.js";
@@ -12,8 +14,20 @@ import type { CardPlacement } from "./placement.js";
 /**
  * `error` and `expected` are written for the model (so it can send a corrected
  * spec) and for developer logs. A host never shows them to the user.
+ *
+ * `issues` is every problem found, in the order the validator checks; `error` is the message of the first one and
+ * `expected` its example when it has one (a `required` or `exclusive` issue whose `hint` is a sample of a valid
+ * value). Optional so a validator written before issues existed still fits: read `error` when `issues` is absent.
  */
-export type CardValidationResult = { ok: true } | { ok: false; error: string; expected?: string };
+export type CardValidationResult = { ok: true } | { ok: false; error: string; expected?: string; issues?: Issue[] };
+
+/** The result a card validator returns for the issues it collected: valid when there are none. */
+export function cardResult(issues: Issue[]): CardValidationResult {
+  const first = issues[0];
+  if (first === undefined) return { ok: true };
+  const example = (first.code === "required" || first.code === "exclusive") && first.hint !== undefined ? { expected: first.hint } : {};
+  return { ok: false, error: first.message, ...example, issues };
+}
 
 /** Structurally identical to super-chat's `CardKindDefinition`, so a host can register it as is. */
 export interface CardKindDefinition {
@@ -102,6 +116,11 @@ export interface PluginTool {
   /**
    * Required for a host to offer the tool. A tool with a missing or unknown
    * authority stays out of every preset: authority is never assumed.
+   *
+   * It is what the plugin says about itself. A plugin from a source the host does not
+   * trust can declare `read` for a tool that deletes things, so whether to believe it is
+   * the host's policy, as MCP says of tool annotations. Authority that comes from outside
+   * (MCP annotations, `interop/mcp`) is likewise absent unless the host trusts the source.
    */
   authority?: PluginToolAuthority;
   /** The host must get the user's agreement before each run and then pass `confirmed: true`. */
@@ -128,28 +147,28 @@ export interface ChatPlugin {
 }
 
 /** Checks the manifest and that every declared capability is actually implemented. */
-export function validateChatPlugin(plugin: ChatPlugin): ManifestIssue[] {
+export function validateChatPlugin(plugin: ChatPlugin): Issue[] {
   const issues = validatePluginManifest(plugin?.manifest);
   if (issues.length) return issues;
-  const add = (path: string, message: string) => issues.push({ path, message });
+  const add = adder(issues);
   const kinds = new Set((plugin.cardKinds ?? []).map((k) => k.kind));
   const tools = new Set((plugin.tools ?? []).map((t) => t.name));
   plugin.manifest.capabilities.forEach((cap, i) => {
     const p = `capabilities[${i}]`;
     if (cap.surface === "card") {
-      if (!kinds.has(cap.cardKind!)) add(`${p}.cardKind`, `plugin does not define card kind "${cap.cardKind}"`);
-      if (typeof plugin.mounts?.[cap.cardKind!] !== "function") add(`${p}.cardKind`, `plugin has no mount for card kind "${cap.cardKind}"`);
+      if (!kinds.has(cap.cardKind!)) add(`${p}.cardKind`, "reference", `plugin does not define card kind "${cap.cardKind}"`);
+      if (typeof plugin.mounts?.[cap.cardKind!] !== "function") add(`${p}.cardKind`, "reference", `plugin has no mount for card kind "${cap.cardKind}"`);
     }
     if (cap.surface === "panel" && cap.cardKind !== undefined) {
-      if (!kinds.has(cap.cardKind)) add(`${p}.cardKind`, `plugin does not define card kind "${cap.cardKind}"`);
-      if (typeof plugin.mounts?.[cap.cardKind] !== "function") add(`${p}.cardKind`, `plugin has no mount for card kind "${cap.cardKind}"`);
+      if (!kinds.has(cap.cardKind)) add(`${p}.cardKind`, "reference", `plugin does not define card kind "${cap.cardKind}"`);
+      if (typeof plugin.mounts?.[cap.cardKind] !== "function") add(`${p}.cardKind`, "reference", `plugin has no mount for card kind "${cap.cardKind}"`);
     }
-    if (cap.surface === "tool" && !tools.has(cap.toolName!)) add(`${p}.toolName`, `plugin does not define tool "${cap.toolName}"`);
+    if (cap.surface === "tool" && !tools.has(cap.toolName!)) add(`${p}.toolName`, "reference", `plugin does not define tool "${cap.toolName}"`);
   });
   (plugin.tools ?? []).forEach((tool, i) => {
     // A missing authority is allowed here so older plugins still load; hosts keep such a tool out of every preset.
-    if (tool.authority !== undefined && pluginToolAuthority(tool) === null) add(`tools[${i}].authority`, `must be one of ${PLUGIN_TOOL_AUTHORITIES.join(", ")}`);
-    if (tool.confirm !== undefined && typeof tool.confirm !== "boolean") add(`tools[${i}].confirm`, "must be a boolean");
+    if (tool.authority !== undefined && pluginToolAuthority(tool) === null) oneOf(add, `tools[${i}].authority`, tool.authority, PLUGIN_TOOL_AUTHORITIES);
+    if (tool.confirm !== undefined) bool(add, `tools[${i}].confirm`, tool.confirm);
   });
   return issues;
 }

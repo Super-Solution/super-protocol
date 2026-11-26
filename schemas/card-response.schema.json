@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Super-Solution/super-protocol/main/schemas/card-response.schema.json",
+  "title": "Card response",
+  "description": "What the person did with an interactive card; the host turns it into the tool result. Structure only. A value this schema accepts can still be refused by the validator: rules across fields (duplicates, a tool result that answers no call, ordering, limits that count UTF-16 units) are checked by the validators and pinned by conformance/protocol.v1.json, not here. A value the validators accept always validates.",
+  "type": "object",
+  "required": [
+    "type"
+  ],
+  "properties": {
+    "type": {
+      "enum": [
+        "submit",
+        "select",
+        "confirm",
+        "cancel",
+        "dismiss"
+      ]
+    },
+    "value": {}
+  }
+}

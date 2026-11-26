@@ -8,3 +8,6 @@ export * from "./ref.js";
 export * from "./plot.js";
 export * from "./theme.js";
 export * from "./placement.js";
+export * from "./mapping.js";
+export * from "./version.js";
+export { ISSUE_CODES, didYouMean, type Issue, type IssueCode } from "./issue.js";

@@ -27,9 +27,11 @@ const PlotFallbackMessage = "This chart can't be shown here."
 
 var (
 	// ChartTypes are the chart styles a chart card may ask for.
-	ChartTypes = []string{"candles", "hollow-candles", "ohlc", "line", "area", "baseline", "heikin-ashi"}
-	surfaces   = []string{"card", "panel", "tool", "canvas"}
-	tones      = []string{"bull", "bear", "neutral", "accent"}
+	ChartTypes      = []string{"candles", "hollow-candles", "ohlc", "line", "area", "baseline", "heikin-ashi"}
+	surfaces        = []string{"card", "panel", "tool", "canvas"}
+	tones           = []string{"bull", "bear", "neutral", "accent"}
+	editorModes     = []string{"view", "edit"}
+	annotationKinds = []string{"level", "zone", "marker", "trend", "ray", "fibonacci", "plan"}
 
 	// annotationAnchors is how many anchors each annotation kind takes.
 	annotationAnchors = map[string]int{"level": 1, "zone": 2, "marker": 1, "trend": 2, "ray": 2, "fibonacci": 2, "plan": 3}
@@ -55,17 +57,13 @@ const (
 	maxPlotID      = 128
 )
 
-// ManifestIssue is one problem found in a plugin manifest.
-type ManifestIssue struct {
-	Path    string `json:"path"`
-	Message string `json:"message"`
-}
-
-// CardResult is the outcome of validating a card spec.
+// CardResult is the outcome of validating a card spec. Issues is every problem found, in the order the validator
+// checks; Error is the message of the first one and Expected its example when it has one.
 type CardResult struct {
-	OK       bool   `json:"ok"`
-	Error    string `json:"error,omitempty"`
-	Expected string `json:"expected,omitempty"`
+	OK       bool    `json:"ok"`
+	Error    string  `json:"error,omitempty"`
+	Expected string  `json:"expected,omitempty"`
+	Issues   []Issue `json:"issues,omitempty"`
 }
 
 func contains(list []string, s string) bool {
@@ -78,28 +76,31 @@ func contains(list []string, s string) bool {
 }
 
 // ValidatePluginManifest returns every problem found; an empty slice means the manifest is valid.
-func ValidatePluginManifest(value any) []ManifestIssue {
-	issues := []ManifestIssue{}
-	add := func(path, message string) { issues = append(issues, ManifestIssue{path, message}) }
+func ValidatePluginManifest(value any) []Issue {
+	c := newChecker()
 	if !isObject(value) {
-		return []ManifestIssue{{Path: "", Message: "manifest must be an object"}}
+		c.wrongType("", value, "manifest must be an object")
+		return c.issues
 	}
-	if v, _ := get(value, "manifestVersion"); !equalsNumber(v, PluginManifestVersion) {
-		add("manifestVersion", fmt.Sprintf("must be %d", PluginManifestVersion))
+	if v := field(value, "manifestVersion"); !equalsNumber(v, PluginManifestVersion) {
+		message := fmt.Sprintf("must be %d", PluginManifestVersion)
+		if isUndefined(v) {
+			c.add("manifestVersion", CodeRequired, message)
+		} else {
+			c.add("manifestVersion", CodeEnum, message)
+		}
 	}
-	if v, _ := get(value, "name"); !matches(nameRe, v) {
-		add("name", "must be a valid npm package name")
+	c.pattern("name", field(value, "name"), nameRe, "must be a valid npm package name")
+	c.pattern("version", field(value, "version"), semverRe, "must be a semver string")
+	c.filled("license", field(value, "license"), "must be a non-empty SPDX expression")
+	if protocol := field(value, "protocol"); !isUndefined(protocol) {
+		c.pattern("protocol", protocol, protocolVersionRe, protocolMessage)
 	}
-	if v, _ := get(value, "version"); !matches(semverRe, v) {
-		add("version", "must be a semver string")
-	}
-	if v, _ := get(value, "license"); !isString(v) || trim(v.(string)) == "" {
-		add("license", "must be a non-empty SPDX expression")
-	}
-	caps, _ := get(value, "capabilities")
-	list, isList := caps.([]any)
-	if !isList || len(list) == 0 {
-		add("capabilities", "must be a non-empty array")
+	caps := field(value, "capabilities")
+	if list, isList := caps.([]any); !isList {
+		c.wrongType("capabilities", caps, "must be a non-empty array")
+	} else if len(list) == 0 {
+		c.add("capabilities", CodeEmpty, "must be a non-empty array")
 	} else {
 		seen := map[string]bool{}
 		for i, cap := range list {
@@ -108,366 +109,447 @@ func ValidatePluginManifest(value any) []ManifestIssue {
 			switch cap.(type) {
 			case map[string]any, []any:
 			default:
-				add(path, "must be an object")
+				c.wrongType(path, cap, "must be an object")
 				continue
 			}
-			id, _ := get(cap, "id")
+			id := field(cap, "id")
 			if !matches(capabilityIDRe, id) {
-				add(path+".id", "must be a dotted lowercase id such as editor.document")
+				c.pattern(path+".id", id, capabilityIDRe, "must be a dotted lowercase id such as editor.document")
 			} else if seen[id.(string)] {
-				add(path+".id", "duplicate capability id")
+				c.add(path+".id", CodeUnique, "duplicate capability id")
 			} else {
 				seen[id.(string)] = true
 			}
-			surface, _ := get(cap, "surface")
-			surfaceName, surfaceIsString := asString(surface)
-			if !surfaceIsString || !contains(surfaces, surfaceName) {
-				add(path+".surface", "must be one of "+strings.Join(surfaces, ", "))
+			surface := field(cap, "surface")
+			c.oneOfMsg(path+".surface", surface, surfaces, "must be one of "+strings.Join(surfaces, ", "))
+			surfaceName, _ := asString(surface)
+			cardKind := field(cap, "cardKind")
+			if surfaceName == "card" {
+				c.textMsg(path+".cardKind", cardKind, "is required for card capabilities")
 			}
-			cardKind, cardKindPresent := get(cap, "cardKind")
-			toolName, _ := get(cap, "toolName")
-			if k, ok := asString(cardKind); surfaceName == "card" && (!ok || k == "") {
-				add(path+".cardKind", "is required for card capabilities")
+			if surfaceName == "panel" && !isUndefined(cardKind) {
+				c.textMsg(path+".cardKind", cardKind, "must be a non-empty card kind when given")
 			}
-			if k, ok := asString(cardKind); surfaceName == "panel" && cardKindPresent && (!ok || k == "") {
-				add(path+".cardKind", "must be a non-empty card kind when given")
+			if surfaceName == "tool" {
+				c.textMsg(path+".toolName", field(cap, "toolName"), "is required for tool capabilities")
 			}
-			if n, ok := asString(toolName); surfaceName == "tool" && (!ok || n == "") {
-				add(path+".toolName", "is required for tool capabilities")
-			}
-			if schema, present := get(cap, "inputSchema"); present && !isObject(schema) {
-				add(path+".inputSchema", "must be an object")
+			if schema := field(cap, "inputSchema"); !isUndefined(schema) {
+				c.object(path+".inputSchema", schema)
 			}
 		}
 	}
-	if service, present := get(value, "service"); present {
-		baseURL, _ := get(service, "baseUrl")
-		if s, ok := asString(baseURL); !(isObject(service) && ok && isHTTPURL(s)) {
-			add("service.baseUrl", "must be an http(s) URL")
+	if service := field(value, "service"); !isUndefined(service) {
+		message := "must be an http(s) URL"
+		if !isObject(service) {
+			c.addHint("service.baseUrl", CodeType, message, "got "+jsonType(service))
+		} else if baseURL := field(service, "baseUrl"); !isString(baseURL) {
+			c.wrongType("service.baseUrl", baseURL, message)
+		} else if !isHTTPURL(baseURL.(string)) {
+			c.add("service.baseUrl", CodeFormat, message)
 		}
 	}
-	return issues
-}
-
-func fail(message string) CardResult { return CardResult{Error: message} }
-
-func failExpected(message, expected string) CardResult {
-	return CardResult{Error: message, Expected: expected}
+	return c.issues
 }
 
 // ValidateEditorCardSpec checks the spec of a `super-editor.document` card.
 func ValidateEditorCardSpec(spec any) CardResult {
+	c := newChecker()
 	if !isObject(spec) {
-		return fail("Editor card spec must be an object.")
+		c.wrongType("", spec, "Editor card spec must be an object.")
+		return cardResult(c.issues)
 	}
-	if kind, _ := get(spec, "kind"); kind != EditorCardKind {
-		return fail(fmt.Sprintf("kind must be %q.", EditorCardKind))
+	c.oneOfMsg("kind", field(spec, "kind"), []string{EditorCardKind}, fmt.Sprintf("kind must be %q.", EditorCardKind))
+	if title := field(spec, "title"); !isUndefined(title) {
+		c.strMsg("title", title, "title must be a string.")
 	}
-	if title, present := get(spec, "title"); present && !isString(title) {
-		return fail("title must be a string.")
+	mode := field(spec, "mode")
+	if !isUndefined(mode) {
+		c.oneOfMsg("mode", mode, editorModes, `mode must be "view" or "edit".`)
 	}
-	mode, hasMode := get(spec, "mode")
-	if hasMode && mode != "view" && mode != "edit" {
-		return fail(`mode must be "view" or "edit".`)
-	}
-	document, hasDocument := get(spec, "document")
-	service, hasService := get(spec, "service")
+	document, service := field(spec, "document"), field(spec, "service")
+	hasDocument, hasService := !isUndefined(document), !isUndefined(service)
 	if hasDocument == hasService {
-		return failExpected("Provide exactly one of `document` or `service`.", "document: {...} | service: { baseUrl, documentId }")
+		c.addHint("", CodeExclusive, "Provide exactly one of `document` or `service`.", "document: {...} | service: { baseUrl, documentId }")
 	}
 	if hasService && mode == "edit" {
-		return fail("A service-backed document is read-only for now: use an inline document to edit.")
+		c.add("mode", CodeExclusive, "A service-backed document is read-only for now: use an inline document to edit.")
 	}
 	if hasDocument {
-		version, _ := get(document, "schemaVersion")
-		id, _ := get(document, "id")
-		title, _ := get(document, "title")
-		blocks, _ := get(document, "blocks")
-		_, blocksIsList := blocks.([]any)
-		if !(isObject(document) && equalsNumber(version, 1) && isString(id) && isString(title) && blocksIsList) {
-			return fail("document must be a schemaVersion 1 report document with id, title and blocks.")
-		}
-	} else {
-		baseURL, _ := get(service, "baseUrl")
-		documentID, _ := get(service, "documentId")
-		u, uOK := asString(baseURL)
-		d, dOK := asString(documentID)
-		if !(isObject(service) && uOK && dOK && d != "" && isHTTPURL(u)) {
-			return fail("service needs an http(s) baseUrl and a documentId.")
+		const message = "document must be a schemaVersion 1 report document with id, title and blocks."
+		if !isObject(document) {
+			c.wrongType("document", document, message)
+		} else {
+			if version := field(document, "schemaVersion"); !equalsNumber(version, 1) {
+				if isUndefined(version) {
+					c.add("document.schemaVersion", CodeRequired, message)
+				} else {
+					c.add("document.schemaVersion", CodeEnum, message)
+				}
+			}
+			if id := field(document, "id"); !isString(id) {
+				c.wrongType("document.id", id, message)
+			}
+			if title := field(document, "title"); !isString(title) {
+				c.wrongType("document.title", title, message)
+			}
+			if blocks := field(document, "blocks"); !isList(blocks) {
+				c.wrongType("document.blocks", blocks, message)
+			}
 		}
 	}
-	return CardResult{OK: true}
+	if hasService {
+		const message = "service needs an http(s) baseUrl and a documentId."
+		if !isObject(service) {
+			c.wrongType("service", service, message)
+		} else {
+			if baseURL := field(service, "baseUrl"); !isString(baseURL) {
+				c.wrongType("service.baseUrl", baseURL, message)
+			} else if !isHTTPURL(baseURL.(string)) {
+				c.add("service.baseUrl", CodeFormat, message)
+			}
+			c.textMsg("service.documentId", field(service, "documentId"), message)
+		}
+	}
+	return cardResult(c.issues)
 }
 
-// ValidatePeriod returns "" when the period is valid, otherwise the problem.
-func ValidatePeriod(v any) string {
+func firstMessage(fill func(c *checker)) string {
+	c := newChecker()
+	fill(c)
+	if len(c.issues) == 0 {
+		return ""
+	}
+	return c.issues[0].Message
+}
+
+func (c *checker) period(path string, v any) {
 	if !isObject(v) {
-		return "period must be an object."
+		c.wrongType(path, v, "period must be an object.")
+		return
 	}
-	if m, _ := get(v, "multiplier"); !isSafeInteger(m) || m.(float64) <= 0 {
-		return "period.multiplier must be a positive integer."
+	multiplier := field(v, "multiplier")
+	if _, ok := multiplier.(float64); !ok {
+		c.wrongType(path+".multiplier", multiplier, "period.multiplier must be a positive integer.")
+	} else if !isSafeInteger(multiplier) || multiplier.(float64) <= 0 {
+		c.add(path+".multiplier", CodeRange, "period.multiplier must be a positive integer.")
 	}
-	if t, _ := get(v, "timespan"); !isString(t) || trim(t.(string)) == "" {
-		return "period.timespan must be a non-empty string."
-	}
-	if t, _ := get(v, "text"); !isString(t) || trim(t.(string)) == "" {
-		return "period.text must be a non-empty string."
-	}
-	return ""
+	c.filled(path+".timespan", field(v, "timespan"), "period.timespan must be a non-empty string.")
+	c.filled(path+".text", field(v, "text"), "period.text must be a non-empty string.")
 }
 
 var symbolStrings = []string{"name", "shortName", "exchange", "market", "priceCurrency", "type", "logo", "timezone"}
 
-// ValidateSymbol returns "" when the symbol is valid, otherwise the problem.
-func ValidateSymbol(v any) string {
+func (c *checker) symbol(path string, v any) {
 	if !isObject(v) {
-		return "symbol must be an object."
+		c.wrongType(path, v, "symbol must be an object.")
+		return
 	}
-	if t, _ := get(v, "ticker"); !isString(t) || trim(t.(string)) == "" {
-		return "symbol.ticker must be a non-empty string."
-	}
+	c.filled(path+".ticker", field(v, "ticker"), "symbol.ticker must be a non-empty string.")
 	for _, k := range symbolStrings {
-		if item, present := get(v, k); present && !isString(item) {
-			return fmt.Sprintf("symbol.%s must be a string.", k)
+		if item := field(v, k); !isUndefined(item) {
+			c.strMsg(path+"."+k, item, fmt.Sprintf("symbol.%s must be a string.", k))
 		}
 	}
-	if p, present := get(v, "pricePrecision"); present && p != "auto" && !(isInteger(p) && p.(float64) >= 0 && p.(float64) <= 12) {
-		return `symbol.pricePrecision must be an integer from 0 to 12 or "auto".`
+	if p := field(v, "pricePrecision"); !isUndefined(p) && p != "auto" {
+		message := `symbol.pricePrecision must be an integer from 0 to 12 or "auto".`
+		if _, ok := p.(float64); !ok {
+			c.addHint(path+".pricePrecision", CodeType, message, "got "+jsonType(p))
+		} else if !(isInteger(p) && p.(float64) >= 0 && p.(float64) <= 12) {
+			c.add(path+".pricePrecision", CodeRange, message)
+		}
 	}
-	return ""
 }
 
-// ValidateMarketBar returns "" when the bar is valid, otherwise the problem.
-func ValidateMarketBar(v any) string {
+func (c *checker) bar(path string, v any) {
 	if !isObject(v) {
-		return "a bar must be an object."
+		c.wrongType(path, v, "a bar must be an object.")
+		return
 	}
 	for _, k := range []string{"timestamp", "open", "high", "low", "close"} {
-		if x, _ := get(v, k); !finite(x) {
-			return fmt.Sprintf("bar.%s must be a finite number.", k)
+		c.finiteNumber(path+"."+k, field(v, k), fmt.Sprintf("bar.%s must be a finite number.", k))
+	}
+	if vol := field(v, "volume"); !isUndefined(vol) {
+		c.finiteNumber(path+".volume", vol, "bar.volume must be a finite number.")
+	}
+	open, high, low, closing := field(v, "open"), field(v, "high"), field(v, "low"), field(v, "close")
+	if finite(open) && finite(high) && finite(low) && finite(closing) {
+		o, h, l, cl := open.(float64), high.(float64), low.(float64), closing.(float64)
+		if h < max(o, cl, l) || l > min(o, cl) {
+			c.add(path, CodeShape, "bar high/low must contain open and close.")
 		}
 	}
-	if vol, present := get(v, "volume"); present && !finite(vol) {
-		return "bar.volume must be a finite number."
-	}
-	m := v.(map[string]any)
-	o, h, l, c := m["open"].(float64), m["high"].(float64), m["low"].(float64), m["close"].(float64)
-	if h < max(o, c, l) || l > min(o, c) {
-		return "bar high/low must contain open and close."
-	}
-	return ""
 }
 
-// ValidateChartAnnotation returns "" when the annotation is valid, otherwise the problem.
-func ValidateChartAnnotation(v any) string {
+// annotation checks one annotation; it returns its key when the key is a usable one, so the caller can look for
+// duplicates.
+func (c *checker) annotation(path string, v any) (key string, usable bool) {
 	if !isObject(v) {
-		return "an annotation must be an object."
+		c.wrongType(path, v, "an annotation must be an object.")
+		return "", false
 	}
-	key, _ := get(v, "key")
-	if k, ok := asString(key); !ok || trim(k) == "" || jsLength(k) > maxKeyLength {
-		return fmt.Sprintf("annotation.key must be a non-empty string of at most %d characters.", maxKeyLength)
+	keyMessage := fmt.Sprintf("annotation.key must be a non-empty string of at most %d characters.", maxKeyLength)
+	keyValue := field(v, "key")
+	c.filled(path+".key", keyValue, keyMessage)
+	if k, ok := asString(keyValue); ok && trim(k) != "" {
+		if jsLength(k) > maxKeyLength {
+			c.add(path+".key", CodeLength, keyMessage)
+		} else {
+			key, usable = k, true
+		}
 	}
-	kind, _ := get(v, "kind")
-	kindName, kindOK := kind.(string)
+	kindValue := field(v, "kind")
+	c.oneOfMsg(path+".kind", kindValue, annotationKinds, `annotation.kind must be "level", "zone", "marker", "trend", "ray", "fibonacci" or "plan".`)
+	kindName, _ := asString(kindValue)
 	needed, known := annotationAnchors[kindName]
-	if !kindOK || !known {
-		return `annotation.kind must be "level", "zone", "marker", "trend", "ray", "fibonacci" or "plan".`
-	}
-	anchorsValue, _ := get(v, "anchors")
-	anchors, ok := anchorsValue.([]any)
-	if !ok || len(anchors) == 0 || len(anchors) > maxAnchors {
-		return "annotation.anchors must hold one to three anchors."
-	}
-	priced := make([]bool, len(anchors))
-	for i, a := range anchors {
-		if t, _ := get(a, "time"); !isObject(a) || !finite(t) {
-			return "annotation anchors need a finite time."
-		}
-		price, present := get(a, "price")
-		if present && !finite(price) {
-			return "annotation anchor price must be a finite number."
-		}
-		priced[i] = present
-	}
-	allPriced := true
-	for _, p := range priced {
-		allPriced = allPriced && p
-	}
+	anchorsMessage := "annotation.anchors must hold one to three anchors."
+	anchorsValue := field(v, "anchors")
+	anchors, isList := anchorsValue.([]any)
 	switch {
-	case kindName == "level" && (len(anchors) != 1 || !priced[0]):
-		return "a level needs exactly one anchor with a price."
-	case kindName == "zone" && (len(anchors) != 2 || !allPriced):
-		return "a zone needs two anchors, both with a price."
-	case kindName == "marker" && len(anchors) != 1:
-		return "a marker needs exactly one anchor."
-	case kindName != "level" && kindName != "zone" && kindName != "marker" && (len(anchors) != needed || !allPriced):
-		return fmt.Sprintf("a %s needs %d anchors, all with a price.", kindName, needed)
+	case !isList:
+		c.wrongType(path+".anchors", anchorsValue, anchorsMessage)
+	case len(anchors) == 0:
+		c.add(path+".anchors", CodeEmpty, anchorsMessage)
+	case len(anchors) > maxAnchors:
+		c.add(path+".anchors", CodeLimit, anchorsMessage)
 	}
-	if params, present := get(v, "params"); present {
-		if kindName == "level" || kindName == "zone" || kindName == "marker" {
-			return "annotation.params applies only to trend, ray, fibonacci and plan."
+	anchorsOK := isList && len(anchors) >= 1 && len(anchors) <= maxAnchors
+	priced := make([]bool, len(anchors))
+	if anchorsOK {
+		for i, a := range anchors {
+			ap := fmt.Sprintf("%s.anchors[%d]", path, i)
+			if !isObject(a) {
+				anchorsOK = false
+				c.wrongType(ap, a, "annotation anchors need a finite time.")
+				continue
+			}
+			c.finiteNumber(ap+".time", field(a, "time"), "annotation anchors need a finite time.")
+			if price := field(a, "price"); !isUndefined(price) {
+				c.finiteNumber(ap+".price", price, "annotation anchor price must be a finite number.")
+			}
+			priced[i] = !isUndefined(field(a, "price"))
 		}
+	}
+	if known && anchorsOK {
+		allPriced := true
+		for _, p := range priced {
+			allPriced = allPriced && p
+		}
+		problem := ""
+		switch {
+		case kindName == "level":
+			if len(anchors) != 1 || !priced[0] {
+				problem = "a level needs exactly one anchor with a price."
+			}
+		case kindName == "zone":
+			if len(anchors) != 2 || !allPriced {
+				problem = "a zone needs two anchors, both with a price."
+			}
+		case kindName == "marker":
+			if len(anchors) != 1 {
+				problem = "a marker needs exactly one anchor."
+			}
+		case len(anchors) != needed || !allPriced:
+			problem = fmt.Sprintf("a %s needs %d anchors, all with a price.", kindName, needed)
+		}
+		if problem != "" {
+			c.add(path+".anchors", CodeShape, problem)
+		}
+	}
+	if params := field(v, "params"); !isUndefined(params) {
+		pp := path + ".params"
 		entries, isMap := params.(map[string]any)
-		if !isMap {
-			return "annotation.params must be an object."
-		}
-		if len(entries) > maxParams {
-			return fmt.Sprintf("annotation.params may hold at most %d entries.", maxParams)
-		}
-		names := make([]string, 0, len(entries))
-		for name := range entries {
-			names = append(names, name)
-		}
-		sort.Strings(names)
-		for _, name := range names {
-			if !paramNameRe.MatchString(name) {
-				return "annotation.params keys must be 1 to 32 letters, digits, dash or underscore, starting with a letter."
+		switch {
+		case known && (kindName == "level" || kindName == "zone" || kindName == "marker"):
+			c.add(pp, CodeShape, "annotation.params applies only to trend, ray, fibonacci and plan.")
+		case !isMap:
+			c.wrongType(pp, params, "annotation.params must be an object.")
+		default:
+			if len(entries) > maxParams {
+				c.add(pp, CodeLimit, fmt.Sprintf("annotation.params may hold at most %d entries.", maxParams))
 			}
-			value := entries[name]
-			valid := false
-			switch x := value.(type) {
-			case float64:
-				valid = finite(x)
-			case string:
-				valid = jsLength(x) <= maxParamString
-			case bool:
-				valid = true
+			names := make([]string, 0, len(entries))
+			for name := range entries {
+				names = append(names, name)
 			}
-			if !valid {
-				return fmt.Sprintf("annotation.params.%s must be a finite number, a boolean or a string of at most %d characters.", name, maxParamString)
+			sort.Strings(names)
+			for _, name := range names {
+				if !paramNameRe.MatchString(name) {
+					c.add(pp+"."+name, CodeFormat, "annotation.params keys must be 1 to 32 letters, digits, dash or underscore, starting with a letter.")
+				}
+				message := fmt.Sprintf("annotation.params.%s must be a finite number, a boolean or a string of at most %d characters.", name, maxParamString)
+				switch x := entries[name].(type) {
+				case float64:
+					if !finite(x) {
+						c.add(pp+"."+name, CodeRange, message)
+					}
+				case string:
+					if jsLength(x) > maxParamString {
+						c.add(pp+"."+name, CodeLength, message)
+					}
+				case bool:
+				default:
+					c.addHint(pp+"."+name, CodeType, message, "got "+jsonType(x))
+				}
 			}
 		}
 	}
-	if text, present := get(v, "text"); present {
-		if s, ok := asString(text); !ok || jsLength(s) > maxTextLength {
-			return fmt.Sprintf("annotation.text must be a string of at most %d characters.", maxTextLength)
-		}
+	if text := field(v, "text"); !isUndefined(text) {
+		c.short(path+".text", text, maxTextLength, fmt.Sprintf("annotation.text must be a string of at most %d characters.", maxTextLength))
 	}
-	if tone, present := get(v, "tone"); present {
-		if s, ok := asString(tone); !ok || !contains(tones, s) {
-			return "annotation.tone must be bull, bear, neutral or accent."
-		}
+	if tone := field(v, "tone"); !isUndefined(tone) {
+		c.oneOfMsg(path+".tone", tone, tones, "annotation.tone must be bull, bear, neutral or accent.")
 	}
-	if color, present := get(v, "color"); present {
-		if s, ok := asString(color); !ok || jsLength(s) > 128 {
-			return "annotation.color must be a short CSS color string."
-		}
+	if color := field(v, "color"); !isUndefined(color) {
+		c.short(path+".color", color, 128, "annotation.color must be a short CSS color string.")
 	}
-	return ""
+	return key, usable
 }
 
-// ValidateChartAnnotations returns "" when every annotation is valid and keys are unique.
-func ValidateChartAnnotations(v any) string {
+func (c *checker) annotations(path string, v any) {
 	list, ok := v.([]any)
 	if !ok {
-		return "annotations must be an array."
+		c.wrongType(path, v, "annotations must be an array.")
+		return
 	}
 	if len(list) > maxAnnotations {
-		return fmt.Sprintf("at most %d annotations per chart.", maxAnnotations)
+		c.add(path, CodeLimit, fmt.Sprintf("at most %d annotations per chart.", maxAnnotations))
 	}
 	keys := make(map[string]bool, len(list))
-	for _, item := range list {
-		if problem := ValidateChartAnnotation(item); problem != "" {
-			return problem
+	for i, item := range list {
+		key, usable := c.annotation(fmt.Sprintf("%s[%d]", path, i), item)
+		if !usable {
+			continue
 		}
-		key, _ := get(item, "key")
-		k := key.(string)
-		if keys[k] {
-			return fmt.Sprintf("duplicate annotation key %q.", k)
+		if keys[key] {
+			c.add(fmt.Sprintf("%s[%d].key", path, i), CodeUnique, fmt.Sprintf("duplicate annotation key %q.", key))
 		}
-		keys[k] = true
+		keys[key] = true
 	}
-	return ""
+}
+
+// ValidatePeriod returns "" when the period is valid, otherwise the first problem.
+func ValidatePeriod(v any) string {
+	return firstMessage(func(c *checker) { c.period("period", v) })
+}
+
+// ValidateSymbol returns "" when the symbol is valid, otherwise the first problem.
+func ValidateSymbol(v any) string {
+	return firstMessage(func(c *checker) { c.symbol("symbol", v) })
+}
+
+// ValidateMarketBar returns "" when the bar is valid, otherwise the first problem.
+func ValidateMarketBar(v any) string {
+	return firstMessage(func(c *checker) { c.bar("", v) })
+}
+
+// ValidateChartAnnotation returns "" when the annotation is valid, otherwise the first problem.
+func ValidateChartAnnotation(v any) string {
+	return firstMessage(func(c *checker) { c.annotation("", v) })
+}
+
+// ValidateChartAnnotations returns "" when every annotation is valid and keys are unique, otherwise the first problem.
+func ValidateChartAnnotations(v any) string {
+	return firstMessage(func(c *checker) { c.annotations("", v) })
 }
 
 // ValidateChartCardSpec checks the spec of a `super-chart.chart` card.
 func ValidateChartCardSpec(spec any) CardResult {
+	c := newChecker()
 	if !isObject(spec) {
-		return fail("Chart card spec must be an object.")
+		c.wrongType("", spec, "Chart card spec must be an object.")
+		return cardResult(c.issues)
 	}
-	if kind, _ := get(spec, "kind"); kind != ChartCardKind {
-		return fail(fmt.Sprintf("kind must be %q.", ChartCardKind))
-	}
-	if id, present := get(spec, "id"); present {
-		if s, ok := asString(id); !ok || trim(s) == "" || jsLength(s) > 128 {
-			return fail("id must be a non-empty string.")
+	c.oneOfMsg("kind", field(spec, "kind"), []string{ChartCardKind}, fmt.Sprintf("kind must be %q.", ChartCardKind))
+	if id := field(spec, "id"); !isUndefined(id) {
+		message := "id must be a non-empty string."
+		c.filled("id", id, message)
+		if s, ok := asString(id); ok && trim(s) != "" && jsLength(s) > 128 {
+			c.add("id", CodeLength, message)
 		}
 	}
-	if title, present := get(spec, "title"); present && !isString(title) {
-		return fail("title must be a string.")
+	if title := field(spec, "title"); !isUndefined(title) {
+		c.strMsg("title", title, "title must be a string.")
 	}
-	symbol, _ := get(spec, "symbol")
-	period, _ := get(spec, "period")
-	problem := ValidateSymbol(symbol)
-	if problem == "" {
-		problem = ValidatePeriod(period)
+	c.symbol("symbol", field(spec, "symbol"))
+	c.period("period", field(spec, "period"))
+	if h := field(spec, "height"); !isUndefined(h) {
+		c.finiteBetween("height", h, minHeight, maxHeight, fmt.Sprintf("height must be %d..%d pixels.", minHeight, maxHeight))
 	}
-	if problem != "" {
-		return fail(problem)
+	if t := field(spec, "chartType"); !isUndefined(t) {
+		c.oneOfMsg("chartType", t, ChartTypes, "chartType must be one of "+strings.Join(ChartTypes, ", ")+".")
 	}
-	if h, present := get(spec, "height"); present && !(finite(h) && h.(float64) >= minHeight && h.(float64) <= maxHeight) {
-		return fail(fmt.Sprintf("height must be %d..%d pixels.", minHeight, maxHeight))
-	}
-	if t, present := get(spec, "chartType"); present {
-		if s, ok := asString(t); !ok || !contains(ChartTypes, s) {
-			return fail("chartType must be one of " + strings.Join(ChartTypes, ", ") + ".")
-		}
-	}
-	bars, hasBars := get(spec, "bars")
-	feed, hasFeed := get(spec, "feed")
+	bars, feed := field(spec, "bars"), field(spec, "feed")
+	hasBars, hasFeed := !isUndefined(bars), !isUndefined(feed)
 	if hasBars == hasFeed {
-		return failExpected("Provide exactly one of `bars` or `feed`.", "bars: [{timestamp, open, high, low, close, volume?}] | feed: { id }")
+		c.addHint("", CodeExclusive, "Provide exactly one of `bars` or `feed`.", "bars: [{timestamp, open, high, low, close, volume?}] | feed: { id }")
 	}
 	if hasBars {
 		list, ok := bars.([]any)
-		if !ok || len(list) == 0 {
-			return fail("bars must be a non-empty array.")
-		}
-		if len(list) > maxBars {
-			return fail(fmt.Sprintf("at most %d inline bars; reference a feed for more.", maxBars))
-		}
-		previous := math.Inf(-1)
-		for _, bar := range list {
-			if bad := ValidateMarketBar(bar); bad != "" {
-				return fail(bad)
+		switch {
+		case !ok:
+			c.wrongType("bars", bars, "bars must be a non-empty array.")
+		case len(list) == 0:
+			c.add("bars", CodeEmpty, "bars must be a non-empty array.")
+		default:
+			if len(list) > maxBars {
+				c.add("bars", CodeLimit, fmt.Sprintf("at most %d inline bars; reference a feed for more.", maxBars))
 			}
-			t := bar.(map[string]any)["timestamp"].(float64)
-			if t <= previous {
-				return fail("bars must be sorted oldest first with unique timestamps.")
-			}
-			previous = t
-		}
-	} else if id, _ := get(feed, "id"); !isObject(feed) || !isString(id) || trim(id.(string)) == "" {
-		return fail("feed needs a non-empty id.")
-	}
-	if indicators, present := get(spec, "indicators"); present {
-		list, ok := indicators.([]any)
-		if !ok || len(list) > maxIndicators {
-			return fail(fmt.Sprintf("indicators must be an array of at most %d.", maxIndicators))
-		}
-		for _, item := range list {
-			if name, _ := get(item, "name"); !isObject(item) || !isString(name) || trim(name.(string)) == "" {
-				return fail("each indicator needs a name.")
-			}
-			if params, present := get(item, "params"); present {
-				values, ok := params.([]any)
-				if !ok {
-					return fail("indicator params must be an array of finite numbers.")
+			previous := math.Inf(-1)
+			for i, bar := range list {
+				c.bar(fmt.Sprintf("bars[%d]", i), bar)
+				t, isNumber := field(bar, "timestamp").(float64)
+				if !isNumber || !finite(t) {
+					continue
 				}
-				for _, p := range values {
-					if !finite(p) {
-						return fail("indicator params must be an array of finite numbers.")
+				if t <= previous {
+					c.add(fmt.Sprintf("bars[%d].timestamp", i), CodeOrder, "bars must be sorted oldest first with unique timestamps.")
+				}
+				previous = t
+			}
+		}
+	}
+	if hasFeed {
+		message := "feed needs a non-empty id."
+		if !isObject(feed) {
+			c.wrongType("feed", feed, message)
+		} else {
+			c.filled("feed.id", field(feed, "id"), message)
+		}
+	}
+	if indicators := field(spec, "indicators"); !isUndefined(indicators) {
+		message := fmt.Sprintf("indicators must be an array of at most %d.", maxIndicators)
+		list, ok := indicators.([]any)
+		if !ok {
+			c.wrongType("indicators", indicators, message)
+		} else {
+			if len(list) > maxIndicators {
+				c.add("indicators", CodeLimit, message)
+			}
+			for k, item := range list {
+				p := fmt.Sprintf("indicators[%d]", k)
+				if !isObject(item) {
+					c.wrongType(p, item, "each indicator needs a name.")
+					continue
+				}
+				c.filled(p+".name", field(item, "name"), "each indicator needs a name.")
+				if params := field(item, "params"); !isUndefined(params) {
+					message := "indicator params must be an array of finite numbers."
+					values, ok := params.([]any)
+					if !ok {
+						c.wrongType(p+".params", params, message)
+					} else {
+						for j, n := range values {
+							c.finiteNumber(fmt.Sprintf("%s.params[%d]", p, j), n, message)
+						}
 					}
 				}
 			}
 		}
 	}
-	if annotations, present := get(spec, "annotations"); present {
-		if bad := ValidateChartAnnotations(annotations); bad != "" {
-			return fail(bad)
-		}
+	if annotations := field(spec, "annotations"); !isUndefined(annotations) {
+		c.annotations("annotations", annotations)
 	}
-	return CardResult{OK: true}
+	return cardResult(c.issues)
 }
 
 const plotExpected = `spec: { type: "bar", data: [{ region: "EU", revenue: 12 }, { region: "US", revenue: 20 }], x: "region", y: "revenue" } (the plot itself, its data inside it), alt: "one sentence saying what the plot shows" (beside spec, not inside it)`
@@ -475,41 +557,44 @@ const plotExpected = `spec: { type: "bar", data: [{ region: "EU", revenue: 12 },
 // ValidatePlotCardSpec checks the envelope of a `super.plot` card; the inner `spec` is opaque and checked by the
 // plugin that draws it. The errors are for the model and the developer log, not for the user.
 func ValidatePlotCardSpec(spec any) CardResult {
+	c := newChecker()
 	if !isObject(spec) {
-		return fail("Plot card spec must be an object.")
+		c.wrongType("", spec, "Plot card spec must be an object.")
+		return cardResult(c.issues)
 	}
-	if kind, _ := get(spec, "kind"); kind != PlotCardKind {
-		return fail(fmt.Sprintf("kind must be %q.", PlotCardKind))
-	}
-	if id, present := get(spec, "id"); present {
-		if s, ok := asString(id); !ok || trim(s) == "" || jsLength(s) > maxPlotID {
-			return fail("id must be a non-empty string.")
+	c.oneOfMsg("kind", field(spec, "kind"), []string{PlotCardKind}, fmt.Sprintf("kind must be %q.", PlotCardKind))
+	if id := field(spec, "id"); !isUndefined(id) {
+		message := "id must be a non-empty string."
+		c.filled("id", id, message)
+		if s, ok := asString(id); ok && trim(s) != "" && jsLength(s) > maxPlotID {
+			c.add("id", CodeLength, message)
 		}
 	}
-	if title, present := get(spec, "title"); present && !isString(title) {
-		return fail("title must be a string.")
+	if title := field(spec, "title"); !isUndefined(title) {
+		c.strMsg("title", title, "title must be a string.")
 	}
-	if h, present := get(spec, "height"); present && !(finite(h) && h.(float64) >= minHeight && h.(float64) <= maxHeight) {
-		return fail(fmt.Sprintf("height must be %d..%d pixels.", minHeight, maxHeight))
+	if h := field(spec, "height"); !isUndefined(h) {
+		c.finiteBetween("height", h, minHeight, maxHeight, fmt.Sprintf("height must be %d..%d pixels.", minHeight, maxHeight))
 	}
-	if inner, present := get(spec, "spec"); !isObject(inner) {
-		if !present {
-			return failExpected("spec must be an object: the plot spec.", plotExpected)
+	if inner := field(spec, "spec"); !isObject(inner) {
+		message := "spec must be an object: the plot spec."
+		if isUndefined(inner) {
+			c.addHint("spec", CodeRequired, message, plotExpected)
+		} else {
+			c.wrongType("spec", inner, message)
 		}
-		return fail("spec must be an object: the plot spec.")
 	}
-	alt, present := get(spec, "alt")
-	s, ok := asString(alt)
-	if !ok || trim(s) == "" {
-		if !present {
-			return failExpected("alt must be a non-empty string saying what the plot shows.", plotExpected)
-		}
-		return fail("alt must be a non-empty string saying what the plot shows.")
+	alt := field(spec, "alt")
+	message := "alt must be a non-empty string saying what the plot shows."
+	if isUndefined(alt) {
+		c.addHint("alt", CodeRequired, message, plotExpected)
+	} else {
+		c.filled("alt", alt, message)
 	}
-	if jsLength(s) > maxPlotAlt {
-		return fail(fmt.Sprintf("alt must be at most %d characters.", maxPlotAlt))
+	if s, ok := asString(alt); ok && trim(s) != "" && jsLength(s) > maxPlotAlt {
+		c.add("alt", CodeLength, fmt.Sprintf("alt must be at most %d characters.", maxPlotAlt))
 	}
-	return CardResult{OK: true}
+	return cardResult(c.issues)
 }
 
 // IsTerminalEvent reports whether a stream event type ends a request.
